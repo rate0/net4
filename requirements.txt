@@ -1,0 +1,16 @@
+PyQt6>=6.4.0
+pyshark>=0.5.3
+dpkt>=1.9.7
+scapy>=2.4.5
+pandas>=1.5.0
+numpy>=1.23.0
+matplotlib>=3.6.0
+networkx>=2.8.0
+openai>=1.0.0
+requests>=2.28.0
+python-dateutil>=2.8.2
+pyyaml>=6.0
+pyqtgraph>=0.13.0
+reportlab>=3.6.0
+python-whois>=0.7.0
+scipy>=1.9.0
