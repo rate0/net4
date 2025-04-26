@@ -1,9 +1,13 @@
 import math
+import warnings
 from typing import Dict, List, Any, Optional, Set, Tuple
 
 import networkx as nx
 import matplotlib
-matplotlib.use('Qt5Agg')
+# Explicitly set the backend and suppress any warnings
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore")
+    matplotlib.use('Qt5Agg')
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
@@ -66,10 +70,20 @@ class NetworkGraphView(FigureCanvas):
         self.mpl_connect('button_press_event', self._on_click)
         self.mpl_connect('motion_notify_event', self._on_hover)
         
-        # Set up appearance
+        # Set up appearance using our theme colors
         self.fig.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.05)
-        self.fig.patch.set_facecolor('#f0f0f0')
-        self.axes.set_facecolor('#fafafa')
+        self.fig.patch.set_facecolor('#1e1e2e')  # Match app background
+        self.axes.set_facecolor('#282838')       # Match panel background
+        
+        # Set text and tick colors with high contrast
+        self.axes.tick_params(colors='#ffffff', labelsize=9)
+        self.axes.xaxis.label.set_color('#ffffff')
+        self.axes.yaxis.label.set_color('#ffffff')
+        
+        # Style the title
+        self.axes.title.set_color('#ffffff')
+        self.axes.title.set_fontsize(12)
+        self.axes.title.set_fontweight('bold')
     
     def set_graph(self, graph: nx.Graph, layout: str = 'spring'):
         """
@@ -90,7 +104,8 @@ class NetworkGraphView(FigureCanvas):
         try:
             if layout == 'spring':
                 if SCIPY_AVAILABLE:
-                    self.pos = nx.spring_layout(graph, k=0.3, iterations=50)
+                    # Use smaller k value (0.15) to bring nodes closer together
+                    self.pos = nx.spring_layout(graph, k=0.15, iterations=100)
                 else:
                     # Fall back to a simpler layout if scipy is not available
                     self.pos = nx.circular_layout(graph)
@@ -117,11 +132,11 @@ class NetworkGraphView(FigureCanvas):
         
         if max_degree > min_degree:
             self.node_sizes = {
-                node: 100 + 300 * ((degrees[node] - min_degree) / (max_degree - min_degree))
+                node: 300 + 500 * ((degrees[node] - min_degree) / (max_degree - min_degree))
                 for node in graph.nodes()
             }
         else:
-            self.node_sizes = {node: 200 for node in graph.nodes()}
+            self.node_sizes = {node: 500 for node in graph.nodes()}
         
         # Store node data
         self.node_data = {node: data for node, data in graph.nodes(data=True)}
@@ -134,68 +149,103 @@ class NetworkGraphView(FigureCanvas):
         # Clear previous plot
         self.axes.clear()
         
+        # Set dark theme colors with better contrast
+        self.fig.patch.set_facecolor('#2d2d2d')
+        self.axes.set_facecolor('#303030')
+        
+        # Set text color for dark theme - ensure high contrast
+        self.axes.tick_params(colors='#ffffff')
+        
         if not self.G or len(self.G) == 0:
             self.axes.text(0.5, 0.5, "No graph data available", 
-                         ha='center', va='center', fontsize=12)
+                         ha='center', va='center', fontsize=12, color='#ffffff')
             self.draw()
             return
         
-        # Get node colors
+        # Get node colors - use brighter colors for dark theme
         node_colors = [self._get_node_color(node) for node in self.G.nodes()]
         
-        # Draw nodes
+        # Draw nodes with enhanced visibility for dark theme
         nx.draw_networkx_nodes(
             self.G, self.pos,
             ax=self.axes,
             node_size=[self.node_sizes[node] for node in self.G.nodes()],
             node_color=node_colors,
-            alpha=0.8,
-            linewidths=1,
-            edgecolors='black'
+            alpha=0.9,
+            linewidths=1.5,
+            edgecolors='white'  # White borders for better contrast
         )
         
-        # Draw edges
+        # Draw edges with enhanced visibility
         nx.draw_networkx_edges(
             self.G, self.pos,
             ax=self.axes,
-            width=1.0,
-            alpha=0.5,
-            edge_color='gray'
+            width=1.5,  # Thicker edges
+            alpha=0.7,
+            edge_color='#e0e0e0'  # Light gray for dark background
         )
         
-        # Draw labels (for nodes with larger sizes)
+        # Draw labels for more nodes with white text
+        # Higher threshold for better readability
         labels = {node: node for node in self.G.nodes() 
-                 if self.node_sizes[node] > 150}
+                 if self.node_sizes[node] > 400}
         nx.draw_networkx_labels(
             self.G, self.pos,
             ax=self.axes,
             labels=labels,
-            font_size=8,
-            font_color='black'
+            font_size=9,  # Larger font
+            font_weight='bold',
+            font_color='white'  # White text for dark background
         )
         
-        # Highlight selected node if any
+        # Highlight selected node if any with enhanced glow effect
         if self.selected_node and self.selected_node in self.G:
+            # Draw outer glow
             nx.draw_networkx_nodes(
                 self.G, self.pos,
                 ax=self.axes,
                 nodelist=[self.selected_node],
-                node_size=self.node_sizes[self.selected_node] + 50,
+                node_size=self.node_sizes[self.selected_node] * 1.4,  # Much larger for outer glow
+                node_color='none',
+                linewidths=5,
+                edgecolors='#2d74da',  # Primary blue from theme (outer glow)
+                alpha=0.5  # Semi-transparent
+            )
+            
+            # Draw inner highlight
+            nx.draw_networkx_nodes(
+                self.G, self.pos,
+                ax=self.axes,
+                nodelist=[self.selected_node],
+                node_size=self.node_sizes[self.selected_node] * 1.2,  # Larger highlight
                 node_color='none',
                 linewidths=3,
-                edgecolors='blue'
+                edgecolors='#4589e1'  # Lighter blue from theme (inner highlight)
             )
         
-        # Highlight hover node if any
+        # Highlight hover node if any with subtle glow effect
         if self.hover_node and self.hover_node in self.G and self.hover_node != self.selected_node:
+            # Draw outer glow
             nx.draw_networkx_nodes(
                 self.G, self.pos,
                 ax=self.axes,
                 nodelist=[self.hover_node],
-                node_size=self.node_sizes[self.hover_node] + 30,
+                node_size=self.node_sizes[self.hover_node] * 1.3,  # Larger for outer glow
+                node_color='none',
+                linewidths=4,
+                edgecolors='#ffffff',  # White outer glow for better visibility
+                alpha=0.3  # More transparent than selection
+            )
+            
+            # Draw inner highlight
+            nx.draw_networkx_nodes(
+                self.G, self.pos,
+                ax=self.axes,
+                nodelist=[self.hover_node],
+                node_size=self.node_sizes[self.hover_node] * 1.1,  # Slightly larger
                 node_color='none',
                 linewidths=2,
-                edgecolors='green'
+                edgecolors='#ffffff'  # White for hover inner line
             )
         
         # Configure axes
@@ -219,39 +269,38 @@ class NetworkGraphView(FigureCanvas):
         # Get node data
         data = self.node_data.get(node, {})
         
-        # Default color
-        color = '#aaaaaa'  # Gray
+        # Default color - light gray for unknown entities
+        color = '#e0e0e0'  # Bright white-gray
         
         # Color based on node type
         node_type = data.get('type', 'unknown')
         
         if node_type == 'ip':
-            # Color based on threat level
+            # Color based on threat level - using our theme-consistent colors
             threat_level = data.get('threat_level', 'unknown')
             
             if threat_level == 'malicious':
-                color = '#ff5555'  # Red
+                color = '#b91c1c'  # Match threat-malicious class
             elif threat_level == 'suspicious':
-                color = '#ffaa55'  # Orange
-            elif threat_level == 'safe':
-                color = '#55aa55'  # Green
-            elif threat_level == 'clean':  # Added clean to handle this case
-                color = '#55aa55'  # Green (same as safe)
+                color = '#d97706'  # Match threat-suspicious class
+            elif threat_level == 'safe' or threat_level == 'clean':
+                color = '#15803d'  # Match threat-safe class
             else:
-                color = '#5555aa'  # Blue
+                color = '#2d74da'  # Primary blue from our theme
         
         elif node_type == 'domain':
-            color = '#55aaaa'  # Teal
+            # Default domain color - use a different hue for domains
+            color = '#38bdf8'  # Light blue for domains
             
-            # Color based on threat level
+            # Color based on threat level - maintain threat level colors
             threat_level = data.get('threat_level', 'unknown')
             
             if threat_level == 'malicious':
-                color = '#ff55aa'  # Pink
+                color = '#b91c1c'  # Match malicious color
             elif threat_level == 'suspicious':
-                color = '#ffaaaa'  # Light red
-            elif threat_level == 'clean':  # Added clean to handle this case
-                color = '#55bb99'  # Blue-green
+                color = '#d97706'  # Match suspicious color
+            elif threat_level == 'clean' or threat_level == 'safe':
+                color = '#15803d'  # Match safe color
         
         return color
     
@@ -560,11 +609,13 @@ class GraphViewDashboard(QWidget):
         neighbors_label.setFont(font)
         node_layout.addWidget(neighbors_label)
         
-        # Neighbors table
+        # Neighbors table with enhanced styling for dark theme
         self.neighbors_table = DataTable(
             ["Node", "Type", "Threat Level"],
             []
         )
+        self.neighbors_table.setStyleSheet("QHeaderView::section { background-color: #3a3a3a; color: white; }")
+        self.neighbors_table.setAlternatingRowColors(True)
         node_layout.addWidget(self.neighbors_table)
         
         self.details_layout.addWidget(self.node_details)
@@ -917,30 +968,45 @@ class GraphViewDashboard(QWidget):
             node_id: Node ID
             node_data: Node data dictionary
         """
-        # Basic node information
+        # Basic node information with larger bold font
         self.node_labels["value"].setText(node_id)
-        self.node_labels["type"].setText(node_data.get("type", "Unknown").capitalize())
+        self.node_labels["value"].setStyleSheet("font-size: 12px; font-weight: bold;")
         
-        # Set threat level with color
+        # Enhanced entity type display
+        entity_type = node_data.get("type", "Unknown").capitalize()
+        self.node_labels["type"].setText(entity_type)
+        self.node_labels["type"].setStyleSheet("font-size: 11px; font-weight: bold;")
+        
+        # Set threat level with more prominent colors
         threat_level = node_data.get("threat_level", "unknown")
         self.node_labels["threat_level"].setText(threat_level.capitalize())
         
-        # Set color based on threat level
+        # Set color based on threat level with more prominent styling
         if threat_level == "malicious":
-            self.node_labels["threat_level"].setStyleSheet("color: red; font-weight: bold;")
+            self.node_labels["threat_level"].setStyleSheet(
+                "color: #ff1744; font-weight: bold; font-size: 11px; padding: 2px; background-color: rgba(255,23,68,0.1);"
+            )
         elif threat_level == "suspicious":
-            self.node_labels["threat_level"].setStyleSheet("color: orange; font-weight: bold;")
+            self.node_labels["threat_level"].setStyleSheet(
+                "color: #ff9100; font-weight: bold; font-size: 11px; padding: 2px; background-color: rgba(255,145,0,0.1);"
+            )
         elif threat_level in ["safe", "clean"]:  # Handle both safe and clean
-            self.node_labels["threat_level"].setStyleSheet("color: green;")
+            self.node_labels["threat_level"].setStyleSheet(
+                "color: #00e676; font-weight: bold; font-size: 11px; padding: 2px; background-color: rgba(0,230,118,0.1);"
+            )
         else:
-            self.node_labels["threat_level"].setStyleSheet("")
+            self.node_labels["threat_level"].setStyleSheet(
+                "color: #2979ff; font-weight: bold; font-size: 11px; padding: 2px; background-color: rgba(41,121,255,0.1);"
+            )
         
-        # Connection count
+        # Connection count with enhanced styling
         if self.current_graph and node_id in self.current_graph:
             degree = self.current_graph.degree(node_id)
             self.node_labels["connections"].setText(str(degree))
+            self.node_labels["connections"].setStyleSheet("font-size: 11px; font-weight: bold;")
         else:
             self.node_labels["connections"].setText("0")
+            self.node_labels["connections"].setStyleSheet("font-size: 11px;")
     
     def _update_neighbors_table(self, node_id: str):
         """

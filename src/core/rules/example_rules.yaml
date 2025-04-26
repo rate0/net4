@@ -1,0 +1,97 @@
+---
+# Example custom rules for Net4
+# These rules demonstrate how to detect various network behaviors
+
+# SSH Brute Force Detection
+- id: "custom:ssh:brute_force"
+  name: "SSH Brute Force Attempt"
+  description: "Detects potential SSH brute force attacks by monitoring failed connection attempts"
+  severity: "high"
+  conditions:
+    protocol: "TCP"
+    dst_port: 22
+    connection_count: {"gt": 5}
+    connection_time_span: {"lt": 60}
+  actions:
+    set_threat_level: "suspicious"
+    add_entity_tag: ["brute_force", "ssh"]
+    add_anomaly:
+      type: "attack"
+      subtype: "brute_force"
+  category: "attack"
+  tags: ["ssh", "brute_force", "authentication"]
+  enabled: true
+
+# DNS Tunneling Detection
+- id: "custom:dns:tunneling"
+  name: "DNS Tunneling Detection"
+  description: "Detects potential DNS tunneling by monitoring for unusually long DNS queries"
+  severity: "medium"
+  conditions:
+    protocol: "DNS"
+    query_length: {"gt": 50}
+    distinct_query_types: {"gt": 3}
+  actions:
+    set_threat_level: "suspicious"
+    add_entity_tag: ["tunneling", "dns", "evasion"]
+    add_anomaly:
+      type: "dns_anomaly"
+      subtype: "tunneling"
+  category: "evasion"
+  tags: ["dns", "tunneling", "exfiltration"]
+  enabled: true
+
+# Crypto Mining Detection
+- id: "custom:mining:detection"
+  name: "Crypto Mining Traffic Detection"
+  description: "Detects network traffic patterns associated with cryptocurrency mining"
+  severity: "medium"
+  conditions:
+    dst_port: {"in": [3333, 4444, 5555, 7777, 8888, 9999]}
+    protocol: "TCP"
+  actions:
+    set_threat_level: "suspicious"
+    add_entity_tag: ["crypto_mining"]
+    add_anomaly:
+      type: "policy_violation"
+      subtype: "crypto_mining"
+  category: "policy_violation"
+  tags: ["mining", "cryptocurrency"]
+  enabled: true
+
+# Suspicious User Agent Detection
+- id: "custom:http:suspicious_ua"
+  name: "Suspicious HTTP User Agent"
+  description: "Detects HTTP requests with suspicious user agents often used by malware or scanning tools"
+  severity: "medium"
+  conditions:
+    protocol: "HTTP"
+    "http.user_agent": 
+      regex: "(curl|wget|nikto|sqlmap|nmap|gobuster|dirb|python-requests|go-http-client)"
+  actions:
+    set_threat_level: "suspicious"
+    add_entity_tag: ["suspicious_ua", "scanning"]
+    add_anomaly:
+      type: "scanning"
+      subtype: "suspicious_ua"
+  category: "reconnaissance"
+  tags: ["http", "scanning", "user_agent"]
+  enabled: true
+
+# Regular Beaconing Activity
+- id: "custom:c2:beaconing"
+  name: "Regular Beaconing Activity"
+  description: "Detects regular communication patterns that could indicate command and control traffic"
+  severity: "high"
+  conditions:
+    connection_interval_variance: {"lt": 0.05}
+    connection_count: {"gt": 10}
+  actions:
+    set_threat_level: "malicious"
+    add_entity_tag: ["c2", "beaconing"]
+    add_anomaly:
+      type: "command_and_control"
+      subtype: "beaconing"
+  category: "command_and_control"
+  tags: ["c2", "beaconing", "malware"]
+  enabled: true

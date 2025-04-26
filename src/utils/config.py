@@ -9,11 +9,13 @@ class Config:
         "app": {
             "name": "Net4",
             "version": "1.0.0",
-            "theme": "dark"
+            "theme": "dark",
+            "ui_style": "modern"
         },
         "paths": {
             "tshark": "",  # Will be auto-detected
-            "output_dir": ""  # Default export directory
+            "output_dir": "",  # Default export directory
+            "rules_dir": ""  # Custom rules directory
         },
         "api": {
             "openai": {
@@ -30,15 +32,40 @@ class Config:
             "max_packet_display": 10000,
             "enable_ai_analysis": True,
             "enable_threat_intelligence": True,
+            "enable_custom_rules": True,
             "default_pcap_dir": "",
             "auto_analyze": True,
-            "auto_threat_intel": True
+            "auto_threat_intel": True,
+            "auto_rules_check": True
+        },
+        "detection": {
+            "run_rules_on_import": True,
+            "notify_on_rule_match": True,
+            "alert_severity_threshold": "medium"
+        },
+        "ui": {
+            "color_scheme": "dark",  # blue, dark, light, custom
+            "custom_colors": {
+                "primary": "#3498db",
+                "secondary": "#2c3e50",
+                "accent": "#e74c3c",
+                "background": "#2d2d2d",
+                "text": "#ffffff"
+            },
+            "show_welcome_screen": True,
+            "dashboard_layout": "default",
+            "charts_animation": True,
+            "table_alternate_rows": True,
+            "font_size": "medium"  # small, medium, large
         },
         "reporting": {
             "company_name": "",
             "analyst_name": "",
             "logo_path": "",
-            "default_export_dir": ""
+            "default_export_dir": "",
+            "report_template": "default",
+            "include_ai_insights": True,
+            "include_rules_matches": True
         }
     }
     

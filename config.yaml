@@ -1,0 +1,54 @@
+---
+# Net4 Configuration File
+
+# API Keys
+api:
+  # VirusTotal API settings
+  virustotal:
+    api_key: ""  # Enter your VirusTotal API key here
+    timeout: 30  # Request timeout in seconds
+  
+  # OpenAI API settings
+  openai:
+    api_key: ""  # Enter your OpenAI API key here
+    model: "gpt-4o"  # Primary model (most capable)
+    # Available models:
+    # - "gpt-4o" - Best balance of capability and speed
+    # - "o1" - Advanced Claude model
+    # - "gpt-4.1-mini" - Optimized GPT-4.1 model
+    # - "gpt-4o-mini" - Mini version of GPT-4o
+    # - "o3-mini" - Mini version of Claude's o3
+    # - "gpt-4.1-nano" - Smallest GPT-4.1 variant
+    max_tokens: 4000
+    timeout: 60
+
+# UI Settings
+ui:
+  theme: "dark"  # dark or light
+  font_size: 10
+  confirm_actions: true
+
+# Logging
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  file: "net4.log"
+  max_size_mb: 10
+  backup_count: 5
+
+# Analysis Settings
+analysis:
+  packet_limit: 10000  # Maximum number of packets to process
+  max_connections: 5000  # Maximum number of connections to track
+  enable_ai: true  # Enable AI analysis features
+  enable_threat_intel: true  # Enable threat intelligence lookups
+
+# Rules
+rules:
+  directories:
+    - "src/core/rules"
+  auto_reload: true
+
+# Dashboard Settings
+dashboards:
+  default: "overview"  # Default dashboard to show on startup
+  refresh_interval: 30  # Auto-refresh interval in seconds

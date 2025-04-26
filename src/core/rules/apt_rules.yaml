@@ -1,0 +1,126 @@
+---
+# Advanced Persistent Threat (APT) Detection Rules
+# These rules focus on detecting sophisticated threat actors and APT campaigns
+
+# APT Data Staging Activity
+- id: "custom:apt:data_staging"
+  name: "APT Data Staging Activity"
+  description: "Detects potential APT data staging activity prior to exfiltration"
+  severity: "critical"
+  conditions:
+    protocol: {"in": ["SMB", "HTTP", "HTTPS"]}
+    bytes_out: {"gt": 5000000}
+    time_of_day: {"in": [0, 1, 2, 3, 4, 5, 23]}
+    connection_count: {"gt": 3}
+  actions:
+    set_threat_level: "malicious"
+    add_entity_tag: ["apt", "data_staging", "exfiltration"]
+    add_anomaly:
+      type: "apt"
+      subtype: "data_staging"
+  category: "apt"
+  tags: ["apt", "data_staging", "exfiltration"]
+  enabled: true
+
+# Cobalt Strike Beacon Detection
+- id: "custom:apt:cobalt_strike"
+  name: "Cobalt Strike Beacon Detection"
+  description: "Detects network patterns associated with Cobalt Strike beacons"
+  severity: "critical"
+  conditions:
+    protocol: {"in": ["TCP", "HTTP", "HTTPS"]}
+    connection_interval_variance: {"lt": 0.03}
+    connection_count: {"gt": 5}
+    jitter: {"lt": 0.2}
+    bytes_per_packet: {"lt": 300}
+  actions:
+    set_threat_level: "malicious"
+    add_entity_tag: ["apt", "cobalt_strike", "beacon"]
+    add_anomaly:
+      type: "apt"
+      subtype: "cobalt_strike"
+  category: "apt"
+  tags: ["apt", "cobalt_strike", "beacon", "red_team"]
+  enabled: true
+
+# DNS Tunneling (Advanced)
+- id: "custom:apt:dns_tunnel"
+  name: "Advanced DNS Tunneling"
+  description: "Detects sophisticated DNS tunneling techniques used by APT actors"
+  severity: "high"
+  conditions:
+    protocol: "DNS"
+    query_length: {"gt": 75}
+    subdomain_depth: {"gt": 4}
+    unique_queries: {"gt": 50}
+    query_entropy: {"gt": 4.0}
+  actions:
+    set_threat_level: "malicious"
+    add_entity_tag: ["apt", "dns_tunneling", "exfiltration"]
+    add_anomaly:
+      type: "data_exfiltration"
+      subtype: "dns_tunnel"
+  category: "apt"
+  tags: ["apt", "dns_tunneling", "exfiltration", "c2"]
+  enabled: true
+
+# Lateral Movement Detection
+- id: "custom:apt:lateral_movement"
+  name: "Lateral Movement Detection"
+  description: "Detects potential lateral movement activity within a network"
+  severity: "high"
+  conditions:
+    protocol: {"in": ["SMB", "RDP", "SSH", "WMI"]}
+    connection_count: {"gt": 5}
+    src_ip_count: {"gt": 1}
+    dst_ip_count: {"gt": 3}
+    internal_network: true
+  actions:
+    set_threat_level: "suspicious"
+    add_entity_tag: ["apt", "lateral_movement", "post_exploitation"]
+    add_anomaly:
+      type: "apt"
+      subtype: "lateral_movement"
+  category: "apt"
+  tags: ["apt", "lateral_movement", "post_exploitation"]
+  enabled: true
+
+# Golden Ticket Attack (Kerberos)
+- id: "custom:apt:golden_ticket"
+  name: "Kerberos Golden Ticket Attack"
+  description: "Detects potential Kerberos Golden Ticket attacks"
+  severity: "critical"
+  conditions:
+    protocol: "Kerberos"
+    ticket_encryption_type: {"in": [0x17, 0x18]}
+    ticket_lifetime: {"gt": 10}
+    src_port: {"in": [88, 464]}
+  actions:
+    set_threat_level: "malicious"
+    add_entity_tag: ["apt", "golden_ticket", "kerberos_attack"]
+    add_anomaly:
+      type: "apt"
+      subtype: "golden_ticket"
+  category: "apt"
+  tags: ["apt", "kerberos", "golden_ticket", "privilege_escalation"]
+  enabled: true
+
+# Supply Chain Compromise Indicators
+- id: "custom:apt:supply_chain"
+  name: "Supply Chain Compromise Indicators"
+  description: "Detects network indicators of a possible supply chain compromise"
+  severity: "critical"
+  conditions:
+    dst_domain: {"in": ["update.*.com", "cdn.*.com"]}
+    dst_path: {"regex": ".*(update|patch|firmware|driver).*"}
+    dst_country: {"not_in": ["US", "CA", "GB", "DE", "FR", "JP", "AU"]}
+    connection_count: {"gt": 3}
+  actions:
+    set_threat_level: "suspicious"
+    add_entity_tag: ["apt", "supply_chain", "update_hijack"]
+    add_anomaly:
+      type: "apt"
+      subtype: "supply_chain"
+  category: "apt"
+  tags: ["apt", "supply_chain", "update_hijack"]
+  enabled: true

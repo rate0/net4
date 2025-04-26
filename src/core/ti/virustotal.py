@@ -217,12 +217,28 @@ class VirusTotalClient:
             
             # Lookup based on entity type
             if entity.type == "ip":
-                data = self.lookup_ip(entity.value)
-                threat_info.add_source_data("virustotal", data)
+                # Check if value is actually an IP (some entities might be incorrectly classified)
+                import re
+                ip_pattern = re.compile(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$')
+                if ip_pattern.match(entity.value):
+                    data = self.lookup_ip(entity.value)
+                    threat_info.add_source_data("virustotal", data)
+                else:
+                    self.logger.warning(f"Entity {entity.value} marked as IP but doesn't match IP format")
+                    return None
                 
             elif entity.type == "domain":
-                data = self.lookup_domain(entity.value)
-                threat_info.add_source_data("virustotal", data)
+                # Check if value is actually a domain (not an IP address)
+                import re
+                ip_pattern = re.compile(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$')
+                if ip_pattern.match(entity.value):
+                    # This is actually an IP, not a domain
+                    self.logger.warning(f"Entity {entity.value} marked as domain but is actually an IP. Processing as IP.")
+                    data = self.lookup_ip(entity.value)
+                    threat_info.add_source_data("virustotal", data)
+                else:
+                    data = self.lookup_domain(entity.value)
+                    threat_info.add_source_data("virustotal", data)
                 
             elif entity.type == "hash":
                 data = self.lookup_hash(entity.value)

@@ -180,14 +180,16 @@ class ThreatClassifier:
         if ip in self.safe_ips:
             return "safe", 0.8
         
-        # Check if private/reserved IP
+        # Check if private/reserved IP - don't automatically mark as safe, use unknown instead
         try:
             ip_obj = ipaddress.ip_address(ip)
             if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_multicast:
-                return "safe", 0.7
+                # These are internal IPs, so we mark them as unknown rather than safe
+                # since internal traffic can still be malicious
+                return "unknown", 0.6
         except ValueError:
-            # Invalid IP format
-            return "suspicious", 0.3
+            # Invalid IP format - definitely suspicious
+            return "suspicious", 0.5
         
         # Check for unusual connections
         connections = [
@@ -227,9 +229,13 @@ class ThreatClassifier:
             return "malicious", 0.9
             
         # Check if this is a subdomain of a known safe domain
+        # But only if we have explicit verification in safe_domains list
         for safe_domain in self.safe_domains:
-            if domain.endswith("." + safe_domain) or domain == safe_domain:
-                return "safe", 0.7
+            if domain == safe_domain:  # Only exact matches are considered safe
+                return "safe", 0.8
+            # Subdomains are considered unknown unless we have explicit TI
+            elif domain.endswith("." + safe_domain):
+                return "unknown", 0.5
         
         # Check for suspicious domain characteristics
         
@@ -254,10 +260,11 @@ class ThreatClassifier:
         if any(domain.endswith(tld) for tld in unusual_tlds):
             return "suspicious", 0.4
         
-        # Common legitimate TLDs
+        # Common legitimate TLDs - but don't mark as safe without TI verification
         common_tlds = [".com", ".org", ".net", ".edu", ".gov", ".io", ".co", ".info"]
         if any(domain.endswith(tld) for tld in common_tlds):
-            return "safe", 0.3
+            # Using common TLD doesn't mean it's safe, just less likely to be suspicious
+            return "unknown", 0.4
         
         # No obvious issues
         return "unknown", 0.1

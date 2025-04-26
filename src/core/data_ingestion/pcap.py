@@ -212,24 +212,46 @@ class PcapProcessor:
         if self.tshark_path and os.path.exists(self.tshark_path):
             capture_params['tshark_path'] = self.tshark_path
         
+        # Add optimized capture parameters for large files
+        capture_params['keep_packets'] = False  # Don't keep packets in memory
+        capture_params['include_raw'] = False   # Don't include raw packet data
+        
+        # Check file size to determine strategy
+        file_size = os.path.getsize(file_path)
+        is_large_file = file_size > 100 * 1024 * 1024  # 100 MB threshold
+        is_very_large_file = file_size > 1024 * 1024 * 1024  # 1 GB threshold
+        
+        # For very large files, use packet sampling
+        packet_sampling = 1  # Default: process every packet
+        if is_very_large_file:
+            packet_sampling = 10  # Process every 10th packet
+            self.logger.info(f"Very large file detected ({file_size / (1024 * 1024 * 1024):.2f} GB), using packet sampling")
+        
         try:
             # Create the capture with custom params if provided
             self.logger.info(f"Creating file capture with params: {capture_params}")
             cap = pyshark.FileCapture(file_path, **capture_params)
             
-            # Get packet count for progress reporting
-            self.logger.info("Counting packets in file...")
-            try:
-                cap_len = sum(1 for _ in cap)
-                self.logger.info(f"Found {cap_len} packets")
-            except Exception as e:
-                self.logger.warning(f"Error counting packets: {str(e)}. Progress reporting may be inaccurate.")
-                cap_len = 1000  # Default estimate
-            finally:
-                cap.close()
-            
-            # Reset capture for processing
-            cap = pyshark.FileCapture(file_path, **capture_params)
+            # For large files, avoid counting packets upfront
+            if is_large_file:
+                self.logger.info(f"Large file detected ({file_size / (1024 * 1024):.2f} MB), estimating packet count")
+                # Estimate packet count based on file size (rough approximation)
+                cap_len = int(file_size / 1500)  # Assuming average packet size of 1500 bytes
+                self.logger.info(f"Estimated packet count: ~{cap_len}")
+            else:
+                # Get packet count for progress reporting
+                self.logger.info("Counting packets in file...")
+                try:
+                    cap_len = sum(1 for _ in cap)
+                    self.logger.info(f"Found {cap_len} packets")
+                except Exception as e:
+                    self.logger.warning(f"Error counting packets: {str(e)}. Progress reporting may be inaccurate.")
+                    cap_len = int(file_size / 1500)  # Estimate based on file size
+                finally:
+                    cap.close()
+                
+                # Reset capture for processing
+                cap = pyshark.FileCapture(file_path, **capture_params)
             
             # Process packets
             packet_count = 0
@@ -242,30 +264,72 @@ class PcapProcessor:
             domain_entities = {}
             connections = set()
             
+            # Periodic state saving for large files
+            last_state_save_time = time.time()
+            state_save_interval = 60  # Save state every 60 seconds for large files
+            
+            # Process packets in batches for better performance
+            batch_size = 1000
+            current_batch = []
+            
             for packet in cap:
                 if self.stop_processing:
                     break
                 
                 packet_count += 1
                 
+                # Skip packets based on sampling rate for very large files
+                if is_very_large_file and packet_count % packet_sampling != 0:
+                    continue
+                
                 # Extract packet data
                 packet_data = self._extract_packet_data_pyshark(packet)
                 if packet_data:
-                    self.session.add_packet(packet_data)
+                    # Instead of adding directly, collect in batch
+                    current_batch.append(packet_data)
                     processed_count += 1
                     
-                    # Extract and add network entities
-                    self._process_network_entities(packet_data, ip_entities, domain_entities)
-                    
-                    # Extract and add connections
-                    self._process_connections(packet_data, connections)
+                    # Process in batches for better performance
+                    if len(current_batch) >= batch_size:
+                        # Add packets in batch
+                        for p_data in current_batch:
+                            self.session.add_packet(p_data)
+                            
+                            # Extract and add network entities
+                            self._process_network_entities(p_data, ip_entities, domain_entities)
+                            
+                            # Extract and add connections
+                            self._process_connections(p_data, connections)
+                        
+                        # Clear batch
+                        current_batch = []
                 
-                # Update progress every 100 packets
-                if packet_count % 100 == 0 and progress_callback:
+                # Update progress every 100 packets or every 1000 for very large files
+                progress_interval = 1000 if is_very_large_file else 100
+                if packet_count % progress_interval == 0 and progress_callback:
                     try:
-                        progress_callback(packet_count, cap_len)
+                        # For sampled processing, adjust the progress reporting
+                        if is_very_large_file:
+                            # Show progress based on estimated completion percentage
+                            progress_callback(packet_count // packet_sampling, cap_len // packet_sampling)
+                        else:
+                            progress_callback(packet_count, cap_len)
                     except Exception as e:
                         self.logger.warning(f"Error in progress callback: {str(e)}")
+                
+                # For large files, periodically save state to prevent memory issues
+                if is_large_file and time.time() - last_state_save_time > state_save_interval:
+                    self.logger.info(f"Periodic state save after processing {packet_count} packets")
+                    # Force garbage collection
+                    import gc
+                    gc.collect()
+                    last_state_save_time = time.time()
+            
+            # Process any remaining packets in the last batch
+            for p_data in current_batch:
+                self.session.add_packet(p_data)
+                self._process_network_entities(p_data, ip_entities, domain_entities)
+                self._process_connections(p_data, connections)
             
             # Close capture
             cap.close()
@@ -273,7 +337,10 @@ class PcapProcessor:
             # Final progress update
             if progress_callback:
                 try:
-                    progress_callback(packet_count, cap_len)
+                    if is_very_large_file:
+                        progress_callback(packet_count // packet_sampling, cap_len // packet_sampling)
+                    else:
+                        progress_callback(packet_count, cap_len)
                 except Exception as e:
                     self.logger.warning(f"Error in final progress callback: {str(e)}")
             
@@ -284,7 +351,9 @@ class PcapProcessor:
                 "processing_time": time.time() - start_time,
                 "entity_count": len(ip_entities) + len(domain_entities),
                 "connection_count": len(connections),
-                "backend": "pyshark"
+                "backend": "pyshark",
+                "file_size_mb": file_size / (1024 * 1024),
+                "sampling_rate": packet_sampling
             }
             
             self.session.files[file_id]["metadata"] = file_metadata
@@ -298,7 +367,9 @@ class PcapProcessor:
                 "ip_entities": len(ip_entities),
                 "domain_entities": len(domain_entities),
                 "connections": len(connections),
-                "backend": "pyshark"
+                "backend": "pyshark",
+                "file_size_mb": file_size / (1024 * 1024),
+                "sampling_rate": packet_sampling
             }
             
         except Exception as e:
@@ -332,14 +403,153 @@ class PcapProcessor:
         try:
             self.logger.info("Processing PCAP with scapy (pure Python)")
             
-            # Load packets with scapy
-            packets = scapy.rdpcap(file_path)
-            packet_count = len(packets)
-            self.logger.info(f"Loaded {packet_count} packets with scapy")
+            # Check file size to determine strategy
+            file_size = os.path.getsize(file_path)
+            is_large_file = file_size > 100 * 1024 * 1024  # 100 MB threshold
+            is_very_large_file = file_size > 1024 * 1024 * 1024  # 1 GB threshold
             
-            # Process packets
-            processed_count = 0
+            # For very large files, use packet sampling
+            packet_sampling = 1  # Default: process every packet
+            if is_very_large_file:
+                packet_sampling = 10  # Process every 10th packet
+                self.logger.info(f"Very large file detected ({file_size / (1024 * 1024 * 1024):.2f} GB), using packet sampling")
             
+            # For large files, use PcapReader instead of rdpcap for memory efficiency
+            if is_large_file:
+                self.logger.info(f"Large file detected ({file_size / (1024 * 1024):.2f} MB), using memory-efficient processing")
+                # Estimate packet count based on file size (rough approximation)
+                packet_count = int(file_size / 1500)  # Assuming average packet size of 1500 bytes
+                self.logger.info(f"Estimated packet count: ~{packet_count}")
+                
+                # Process packets in streaming mode
+                return self._process_with_scapy_streaming(file_path, file_id, packet_count, packet_sampling, progress_callback)
+            else:
+                # For smaller files, use standard rdpcap
+                # Load packets with scapy
+                self.logger.info("Loading packets with scapy...")
+                packets = scapy.rdpcap(file_path)
+                packet_count = len(packets)
+                self.logger.info(f"Loaded {packet_count} packets with scapy")
+                
+                # Process packets
+                processed_count = 0
+                
+                start_time = time.time()
+                
+                # Entities and connections for tracking unique ones
+                ip_entities = {}
+                domain_entities = {}
+                connections = set()
+                
+                # Process packets in batches for better performance
+                batch_size = 1000
+                current_batch = []
+                
+                for i, packet in enumerate(packets):
+                    if self.stop_processing:
+                        break
+                    
+                    # Skip packets based on sampling rate for very large files
+                    if is_very_large_file and i % packet_sampling != 0:
+                        continue
+                    
+                    # Extract packet data
+                    packet_data = self._extract_packet_data_scapy(packet, i+1)
+                    if packet_data:
+                        # Instead of adding directly, collect in batch
+                        current_batch.append(packet_data)
+                        processed_count += 1
+                        
+                        # Process in batches for better performance
+                        if len(current_batch) >= batch_size:
+                            # Add packets in batch
+                            for p_data in current_batch:
+                                self.session.add_packet(p_data)
+                                
+                                # Extract and add network entities
+                                self._process_network_entities(p_data, ip_entities, domain_entities)
+                                
+                                # Extract and add connections
+                                self._process_connections(p_data, connections)
+                            
+                            # Clear batch
+                            current_batch = []
+                    
+                    # Update progress every 100 packets or every 1000 for very large files
+                    progress_interval = 1000 if is_very_large_file else 100
+                    if (i+1) % progress_interval == 0 and progress_callback:
+                        try:
+                            progress_callback(i+1, packet_count)
+                        except Exception as e:
+                            self.logger.warning(f"Error in progress callback: {str(e)}")
+                
+                # Process any remaining packets in the last batch
+                for p_data in current_batch:
+                    self.session.add_packet(p_data)
+                    self._process_network_entities(p_data, ip_entities, domain_entities)
+                    self._process_connections(p_data, connections)
+                
+                # Final progress update
+                if progress_callback:
+                    try:
+                        progress_callback(packet_count, packet_count)
+                    except Exception as e:
+                        self.logger.warning(f"Error in final progress callback: {str(e)}")
+                
+                # Update file metadata
+                file_metadata = {
+                    "packet_count": packet_count,
+                    "processed_count": processed_count,
+                    "processing_time": time.time() - start_time,
+                    "entity_count": len(ip_entities) + len(domain_entities),
+                    "connection_count": len(connections),
+                    "backend": "scapy",
+                    "file_size_mb": file_size / (1024 * 1024),
+                    "sampling_rate": packet_sampling
+                }
+                
+                self.session.files[file_id]["metadata"] = file_metadata
+                
+                self.logger.info(f"PCAP processing complete: {processed_count}/{packet_count} packets processed with scapy")
+                
+                return {
+                    "file_id": file_id,
+                    "packet_count": packet_count,
+                    "processed_count": processed_count,
+                    "ip_entities": len(ip_entities),
+                    "domain_entities": len(domain_entities),
+                    "connections": len(connections),
+                    "backend": "scapy",
+                    "file_size_mb": file_size / (1024 * 1024),
+                    "sampling_rate": packet_sampling
+                }
+            
+        except Exception as e:
+            self.logger.error(f"Error processing PCAP file with scapy: {str(e)}")
+            raise
+    
+    def _process_with_scapy_streaming(
+        self, 
+        file_path: str, 
+        file_id: str,
+        estimated_packet_count: int,
+        packet_sampling: int,
+        progress_callback: Optional[Callable[[int, int], None]] = None
+    ) -> Dict[str, Any]:
+        """
+        Process a PCAP file using scapy's PcapReader for memory-efficient streaming
+        
+        Args:
+            file_path: Path to PCAP file
+            file_id: File ID in the session
+            estimated_packet_count: Estimated number of packets
+            packet_sampling: Process every Nth packet (for sampling)
+            progress_callback: Callback function for progress updates
+            
+        Returns:
+            Dict containing summary of processed data
+        """
+        try:
             start_time = time.time()
             
             # Entities and connections for tracking unique ones
@@ -347,35 +557,88 @@ class PcapProcessor:
             domain_entities = {}
             connections = set()
             
-            for i, packet in enumerate(packets):
-                if self.stop_processing:
-                    break
-                
-                # Extract packet data
-                packet_data = self._extract_packet_data_scapy(packet, i+1)
-                if packet_data:
-                    self.session.add_packet(packet_data)
-                    processed_count += 1
+            # Periodic state saving
+            last_state_save_time = time.time()
+            state_save_interval = 60  # Save state every 60 seconds
+            
+            # Process packets in batches for better performance
+            batch_size = 1000
+            current_batch = []
+            
+            packet_count = 0
+            processed_count = 0
+            
+            # Use PcapReader for streaming processing (memory efficient)
+            with scapy.PcapReader(file_path) as pcap_reader:
+                for packet in pcap_reader:
+                    if self.stop_processing:
+                        break
                     
-                    # Extract and add network entities
-                    self._process_network_entities(packet_data, ip_entities, domain_entities)
+                    packet_count += 1
                     
-                    # Extract and add connections
-                    self._process_connections(packet_data, connections)
-                
-                # Update progress every 100 packets
-                if (i+1) % 100 == 0 and progress_callback:
-                    try:
-                        progress_callback(i+1, packet_count)
-                    except Exception as e:
-                        self.logger.warning(f"Error in progress callback: {str(e)}")
+                    # Skip packets based on sampling rate
+                    if packet_sampling > 1 and packet_count % packet_sampling != 0:
+                        continue
+                    
+                    # Extract packet data
+                    packet_data = self._extract_packet_data_scapy(packet, packet_count)
+                    if packet_data:
+                        # Instead of adding directly, collect in batch
+                        current_batch.append(packet_data)
+                        processed_count += 1
+                        
+                        # Process in batches for better performance
+                        if len(current_batch) >= batch_size:
+                            # Add packets in batch
+                            for p_data in current_batch:
+                                self.session.add_packet(p_data)
+                                
+                                # Extract and add network entities
+                                self._process_network_entities(p_data, ip_entities, domain_entities)
+                                
+                                # Extract and add connections
+                                self._process_connections(p_data, connections)
+                            
+                            # Clear batch
+                            current_batch = []
+                    
+                    # Update progress every 1000 packets
+                    if packet_count % 1000 == 0 and progress_callback:
+                        try:
+                            # For sampled processing, adjust the progress reporting
+                            if packet_sampling > 1:
+                                progress_callback(packet_count // packet_sampling, estimated_packet_count // packet_sampling)
+                            else:
+                                progress_callback(packet_count, estimated_packet_count)
+                        except Exception as e:
+                            self.logger.warning(f"Error in progress callback: {str(e)}")
+                    
+                    # Periodically save state to prevent memory issues
+                    if time.time() - last_state_save_time > state_save_interval:
+                        self.logger.info(f"Periodic state save after processing {packet_count} packets")
+                        # Force garbage collection
+                        import gc
+                        gc.collect()
+                        last_state_save_time = time.time()
+            
+            # Process any remaining packets in the last batch
+            for p_data in current_batch:
+                self.session.add_packet(p_data)
+                self._process_network_entities(p_data, ip_entities, domain_entities)
+                self._process_connections(p_data, connections)
             
             # Final progress update
             if progress_callback:
                 try:
-                    progress_callback(packet_count, packet_count)
+                    if packet_sampling > 1:
+                        progress_callback(packet_count // packet_sampling, estimated_packet_count // packet_sampling)
+                    else:
+                        progress_callback(packet_count, packet_count)  # Use actual count for final update
                 except Exception as e:
                     self.logger.warning(f"Error in final progress callback: {str(e)}")
+            
+            # Calculate file size
+            file_size = os.path.getsize(file_path)
             
             # Update file metadata
             file_metadata = {
@@ -384,12 +647,14 @@ class PcapProcessor:
                 "processing_time": time.time() - start_time,
                 "entity_count": len(ip_entities) + len(domain_entities),
                 "connection_count": len(connections),
-                "backend": "scapy"
+                "backend": "scapy-streaming",
+                "file_size_mb": file_size / (1024 * 1024),
+                "sampling_rate": packet_sampling
             }
             
             self.session.files[file_id]["metadata"] = file_metadata
             
-            self.logger.info(f"PCAP processing complete: {processed_count}/{packet_count} packets processed with scapy")
+            self.logger.info(f"PCAP processing complete: {processed_count}/{packet_count} packets processed with scapy streaming")
             
             return {
                 "file_id": file_id,
@@ -398,11 +663,13 @@ class PcapProcessor:
                 "ip_entities": len(ip_entities),
                 "domain_entities": len(domain_entities),
                 "connections": len(connections),
-                "backend": "scapy"
+                "backend": "scapy-streaming",
+                "file_size_mb": file_size / (1024 * 1024),
+                "sampling_rate": packet_sampling
             }
             
         except Exception as e:
-            self.logger.error(f"Error processing PCAP file with scapy: {str(e)}")
+            self.logger.error(f"Error processing PCAP file with scapy streaming: {str(e)}")
             raise
     
     def _extract_packet_data_pyshark(self, packet) -> Optional[Dict[str, Any]]:
@@ -435,14 +702,27 @@ class PcapProcessor:
             
             # Extract transport layer data if present
             if hasattr(packet, 'tcp'):
+                # Helper function to safely convert TCP flag values that might be strings
+                def safe_flag_convert(flag_value):
+                    if not flag_value:
+                        return 0
+                    if isinstance(flag_value, bool) or flag_value in ('True', 'true', '1'):
+                        return 1
+                    if flag_value in ('False', 'false', '0'):
+                        return 0
+                    try:
+                        return int(flag_value)
+                    except (ValueError, TypeError):
+                        return 0
+                
                 packet_data.update({
                     "src_port": int(packet.tcp.srcport),
                     "dst_port": int(packet.tcp.dstport),
                     "tcp_flags": {
-                        "syn": int(packet.tcp.flags_syn) if hasattr(packet.tcp, 'flags_syn') else 0,
-                        "ack": int(packet.tcp.flags_ack) if hasattr(packet.tcp, 'flags_ack') else 0,
-                        "fin": int(packet.tcp.flags_fin) if hasattr(packet.tcp, 'flags_fin') else 0,
-                        "rst": int(packet.tcp.flags_reset) if hasattr(packet.tcp, 'flags_reset') else 0
+                        "syn": safe_flag_convert(packet.tcp.flags_syn) if hasattr(packet.tcp, 'flags_syn') else 0,
+                        "ack": safe_flag_convert(packet.tcp.flags_ack) if hasattr(packet.tcp, 'flags_ack') else 0,
+                        "fin": safe_flag_convert(packet.tcp.flags_fin) if hasattr(packet.tcp, 'flags_fin') else 0,
+                        "rst": safe_flag_convert(packet.tcp.flags_reset) if hasattr(packet.tcp, 'flags_reset') else 0
                     },
                     "tcp_seq": int(packet.tcp.seq) if hasattr(packet.tcp, 'seq') else None,
                     "tcp_ack": int(packet.tcp.ack) if hasattr(packet.tcp, 'ack') else None,
@@ -723,51 +1003,90 @@ class PcapProcessor:
             domain_entities: Dictionary of domain entities (for tracking)
         """
         try:
+            # Get timestamp from packet data
+            timestamp = packet_data.get("timestamp", datetime.now())
+            
             # Process IP addresses
             for ip_type in ["src_ip", "dst_ip"]:
                 if ip_type in packet_data:
                     ip = packet_data[ip_type]
-                    if ip and ip not in ip_entities:
-                        try:
-                            entity = NetworkEntity(
-                                entity_type="ip",
-                                value=ip,
-                                name=f"IP: {ip}"
-                            )
-                            self.session.add_network_entity(entity)
-                            ip_entities[ip] = entity.id
-                        except Exception as e:
-                            self.logger.warning(f"Error adding IP entity {ip}: {str(e)}")
+                    if ip:
+                        if ip not in ip_entities:
+                            try:
+                                entity = NetworkEntity(
+                                    entity_type="ip",
+                                    value=ip,
+                                    name=f"IP: {ip}"
+                                )
+                                # Set timestamp when entity is first seen
+                                entity.update_seen_time(timestamp)
+                                self.session.add_network_entity(entity)
+                                ip_entities[ip] = entity.id
+                            except Exception as e:
+                                self.logger.warning(f"Error adding IP entity {ip}: {str(e)}")
+                        else:
+                            # Update timestamp for existing entity
+                            try:
+                                entity_id = ip_entities[ip]
+                                entity = self.session.get_network_entity(entity_id)
+                                if entity:
+                                    entity.update_seen_time(timestamp)
+                            except Exception as e:
+                                self.logger.warning(f"Error updating timestamp for IP entity {ip}: {str(e)}")
             
             # Process domains from DNS
             if "dns" in packet_data and "domains" in packet_data["dns"]:
                 for domain in packet_data["dns"]["domains"]:
-                    if domain and domain not in domain_entities:
-                        try:
-                            entity = NetworkEntity(
-                                entity_type="domain",
-                                value=domain,
-                                name=f"Domain: {domain}"
-                            )
-                            self.session.add_network_entity(entity)
-                            domain_entities[domain] = entity.id
-                        except Exception as e:
-                            self.logger.warning(f"Error adding DNS domain entity {domain}: {str(e)}")
+                    if domain:
+                        if domain not in domain_entities:
+                            try:
+                                entity = NetworkEntity(
+                                    entity_type="domain",
+                                    value=domain,
+                                    name=f"Domain: {domain}"
+                                )
+                                # Set timestamp when entity is first seen
+                                entity.update_seen_time(timestamp)
+                                self.session.add_network_entity(entity)
+                                domain_entities[domain] = entity.id
+                            except Exception as e:
+                                self.logger.warning(f"Error adding DNS domain entity {domain}: {str(e)}")
+                        else:
+                            # Update timestamp for existing entity
+                            try:
+                                entity_id = domain_entities[domain]
+                                entity = self.session.get_network_entity(entity_id)
+                                if entity:
+                                    entity.update_seen_time(timestamp)
+                            except Exception as e:
+                                self.logger.warning(f"Error updating timestamp for domain entity {domain}: {str(e)}")
             
             # Process domains from HTTP
             if "http" in packet_data and "host" in packet_data["http"]:
                 host = packet_data["http"]["host"]
-                if host and host not in domain_entities:
-                    try:
-                        entity = NetworkEntity(
-                            entity_type="domain",
-                            value=host,
-                            name=f"Domain: {host}"
-                        )
-                        self.session.add_network_entity(entity)
-                        domain_entities[host] = entity.id
-                    except Exception as e:
-                        self.logger.warning(f"Error adding HTTP host entity {host}: {str(e)}")
+                if host:
+                    if host not in domain_entities:
+                        try:
+                            entity = NetworkEntity(
+                                entity_type="domain",
+                                value=host,
+                                name=f"Domain: {host}"
+                            )
+                            # Set timestamp when entity is first seen
+                            entity.update_seen_time(timestamp)
+                            self.session.add_network_entity(entity)
+                            domain_entities[host] = entity.id
+                        except Exception as e:
+                            self.logger.warning(f"Error adding HTTP host entity {host}: {str(e)}")
+                    else:
+                        # Update timestamp for existing entity
+                        try:
+                            entity_id = domain_entities[host]
+                            entity = self.session.get_network_entity(entity_id)
+                            if entity:
+                                entity.update_seen_time(timestamp)
+                        except Exception as e:
+                            self.logger.warning(f"Error updating timestamp for HTTP host entity {host}: {str(e)}")
         except Exception as e:
             self.logger.warning(f"Error processing network entities: {str(e)}")
     

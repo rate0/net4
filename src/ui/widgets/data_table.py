@@ -34,13 +34,14 @@ class DataTable(QWidget):
         self.searchable = True
         self.filter_text = ""
         
-        # Map of text patterns to highlight with colors
+        # Map of text patterns to highlight with colors - using consistent colors with CSS theme
         self.highlight_patterns = {
-            "malicious": QColor(255, 200, 200),  # Light red
-            "suspicious": QColor(255, 230, 200),  # Light orange
-            "high": QColor(255, 200, 200),       # Light red
-            "medium": QColor(255, 230, 200),     # Light orange
-            "low": QColor(255, 255, 200),        # Light yellow
+            "malicious": QColor(185, 28, 28),   # Matches .threat-malicious
+            "suspicious": QColor(217, 119, 6),  # Matches .threat-suspicious
+            "high": QColor(185, 28, 28),        # Same as malicious
+            "medium": QColor(217, 119, 6),      # Same as suspicious
+            "low": QColor(75, 85, 99),          # Gray, less alarming
+            "safe": QColor(21, 128, 61)         # Matches .threat-safe
         }
         
         self._init_ui()
@@ -225,6 +226,14 @@ class DataTable(QWidget):
             if pattern in text:
                 # Apply highlighting
                 item.setBackground(QBrush(color))
+                
+                # Set text color based on background brightness for contrast
+                # Dark text for light backgrounds, light text for dark backgrounds
+                brightness = (color.red() * 299 + color.green() * 587 + color.blue() * 114) / 1000
+                if brightness > 170:  # If background is light
+                    item.setForeground(QBrush(QColor(0, 0, 0)))  # Black text
+                else:
+                    item.setForeground(QBrush(QColor(255, 255, 255)))  # White text
                 
                 # Make text bold for emphasis
                 font = item.font()

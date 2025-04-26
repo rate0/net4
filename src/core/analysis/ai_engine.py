@@ -52,9 +52,23 @@ class AIEngine:
             self.client = None
             self.logger.warning("OpenAI API key not configured")
         
-        self.model = self.config.get("api.openai.model", "gpt-4")
+        # Set default model to gpt-4o (with fallbacks available)
+        self.model = self.config.get("api.openai.model", "gpt-4o")
         self.max_tokens = self.config.get("api.openai.max_tokens", 4000)
         self.timeout = self.config.get("api.openai.timeout", 60)
+        
+        # Define available models in order of preference
+        self.available_models = [
+            "gpt-4o",        # Best balance of capability and speed
+            "o1",            # Advanced Claude model 
+            "gpt-4.1-mini",  # Optimized GPT-4.1 model
+            "gpt-4o-mini",   # Mini version of GPT-4o
+            "o3-mini",       # Mini version of Claude's o3
+            "gpt-4.1-nano",  # Smallest GPT-4.1 variant
+            "o1-2024-12-17", # Dated version of Claude o1
+            "o3-mini-2025-01-31", # Dated version of Claude o3-mini
+            "gpt-4o-mini-2024-07-18" # Dated version of GPT-4o mini
+        ]
     
     def set_api_key(self, api_key: str) -> None:
         """Set OpenAI API key"""
@@ -102,16 +116,60 @@ class AIEngine:
         prompt = self._build_analysis_prompt(analysis_data, analysis_type)
         
         try:
-            # Call OpenAI API - FIXED: Removed response_format parameter that was causing errors
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": "You are a network forensic analyst assisting with the analysis of network traffic data. Provide detailed technical analysis, identify potential security threats, anomalies, and patterns. Your output should be structured in a clear format."},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=self.max_tokens,
-                temperature=0.2
-            )
+            # Call OpenAI API with smart fallback mechanism through available models
+            response = None
+            system_prompt = "You are a network forensic analyst assisting with the analysis of network traffic data. Provide detailed technical analysis, identify potential security threats, anomalies, and patterns. Your output should be structured in a clear format."
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt}
+            ]
+            
+            # Try the specified model first
+            tried_models = []
+            model_to_try = self.model
+            
+            while response is None:
+                if model_to_try in tried_models:
+                    # Skip models we've already tried
+                    continue
+                    
+                try:
+                    self.logger.info(f"Attempting to use model: {model_to_try}")
+                    response = self.client.chat.completions.create(
+                        model=model_to_try,
+                        messages=messages,
+                        max_tokens=self.max_tokens,
+                        temperature=0.2
+                    )
+                    # If successful, break the loop
+                    break
+                    
+                except Exception as api_error:
+                    tried_models.append(model_to_try)
+                    self.logger.warning(f"Error with model {model_to_try}: {str(api_error)}")
+                    
+                    # Find the next model to try
+                    next_model = None
+                    
+                    # First look in our preferred models list
+                    for m in self.available_models:
+                        if m not in tried_models:
+                            next_model = m
+                            break
+                    
+                    # If we've tried all preferred models, fall back to gpt-3.5-turbo as last resort
+                    if next_model is None:
+                        if "gpt-3.5-turbo" not in tried_models:
+                            next_model = "gpt-3.5-turbo"
+                        else:
+                            # We've tried everything, give up
+                            raise Exception("All available models failed to respond")
+                    
+                    model_to_try = next_model
+                    self.logger.info(f"Falling back to model: {model_to_try}")
+            
+            # Log which model was ultimately used
+            self.logger.info(f"Successfully used model: {model_to_try}")
             
             if progress_callback:
                 progress_callback("Processing AI response", 0.7)
@@ -305,16 +363,60 @@ class AIEngine:
         """
         
         try:
-            # Call OpenAI API
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": "You are a network forensic analyst assisting with questions about network traffic data. Provide detailed technical answers based only on the provided data."},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=self.max_tokens,
-                temperature=0.3
-            )
+            # Call OpenAI API with smart fallback mechanism
+            response = None
+            system_prompt = "You are a network forensic analyst assisting with questions about network traffic data. Provide detailed technical answers based only on the provided data."
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt}
+            ]
+            
+            # Try the specified model first
+            tried_models = []
+            model_to_try = self.model
+            
+            while response is None:
+                if model_to_try in tried_models:
+                    # Skip models we've already tried
+                    continue
+                    
+                try:
+                    self.logger.info(f"Question - Attempting to use model: {model_to_try}")
+                    response = self.client.chat.completions.create(
+                        model=model_to_try,
+                        messages=messages,
+                        max_tokens=self.max_tokens,
+                        temperature=0.3
+                    )
+                    # If successful, break the loop
+                    break
+                    
+                except Exception as api_error:
+                    tried_models.append(model_to_try)
+                    self.logger.warning(f"Question - Error with model {model_to_try}: {str(api_error)}")
+                    
+                    # Find the next model to try
+                    next_model = None
+                    
+                    # First look in our preferred models list
+                    for m in self.available_models:
+                        if m not in tried_models:
+                            next_model = m
+                            break
+                    
+                    # If we've tried all preferred models, fall back to gpt-3.5-turbo as last resort
+                    if next_model is None:
+                        if "gpt-3.5-turbo" not in tried_models:
+                            next_model = "gpt-3.5-turbo"
+                        else:
+                            # We've tried everything, give up
+                            raise Exception("All available models failed to respond")
+                    
+                    model_to_try = next_model
+                    self.logger.info(f"Question - Falling back to model: {model_to_try}")
+            
+            # Log which model was ultimately used
+            self.logger.info(f"Question - Successfully used model: {model_to_try}")
             
             if progress_callback:
                 progress_callback("Processing AI response", 0.7)

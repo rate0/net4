@@ -1,5 +1,6 @@
 import os
 import sys
+import threading
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 
@@ -7,18 +8,19 @@ from PyQt6.QtWidgets import (
     QMainWindow, QTabWidget, QSplitter, QMenu, QMenuBar, QToolBar, 
     QStatusBar, QFileDialog, QMessageBox, QApplication, QVBoxLayout, 
     QHBoxLayout, QWidget, QTreeWidget, QTreeWidgetItem, QLabel, 
-    QProgressBar, QDockWidget, QDialog
+    QProgressBar, QDockWidget, QDialog, QHeaderView
 )
-from PyQt6.QtCore import Qt, QSize, pyqtSignal, QThread, QSettings, QObject, QMetaObject
-from PyQt6.QtGui import QIcon, QAction, QPixmap
+from PyQt6.QtCore import Qt, QSize, pyqtSignal, QThread, QSettings, QObject, QMetaObject, QTimer
+from PyQt6.QtGui import QIcon, QAction, QPixmap, QColor, QFont
 
 from .dashboards.overview import OverviewDashboard
 from .dashboards.network_flow import NetworkFlowDashboard
-from .dashboards.timeline import TimelineDashboard
-from .dashboards.graph_view import GraphViewDashboard
-from .dashboards.ai_insights import AIInsightsDashboard  # New import for AI Insights dashboard
+from .dashboards.event_analysis import EventAnalysisDashboard
+from .dashboards.ai_insights import AIInsightsDashboard
+from .widgets.global_search import GlobalSearchWidget
 from .dialogs.settings import SettingsDialog
 from .dialogs.export import ExportDialog
+from .dialogs.rules_manager import RuleManagerDialog
 
 from ..models.session import Session
 from ..core.data_ingestion.pcap import PcapProcessor
@@ -27,6 +29,7 @@ from ..core.analysis.ai_engine import AIEngine
 from ..core.analysis.anomaly import AnomalyDetector
 from ..core.ti.virustotal import VirusTotalClient
 from ..core.ti.classifier import ThreatClassifier
+from ..core.rules.rule_engine import RuleEngine
 from ..utils.config import Config
 from ..utils.logger import Logger
 
@@ -55,6 +58,11 @@ class AnomalySignals(QObject):
     """Signal class for thread-safe anomaly detection callbacks"""
     progress_updated = pyqtSignal(str, float)      # message, progress
     detection_complete = pyqtSignal(list)
+    
+class RuleSignals(QObject):
+    """Signal class for thread-safe rule evaluation callbacks"""
+    progress_updated = pyqtSignal(str, float)      # message, progress
+    evaluation_complete = pyqtSignal(dict)         # result dictionary
 
 class LogSignals(QObject):
     """Signal class for thread-safe log processing callbacks"""
@@ -116,6 +124,11 @@ class MainWindow(QMainWindow):
         self.anomaly_signals.progress_updated.connect(self._update_progress_with_message)
         self.anomaly_signals.detection_complete.connect(self._anomaly_detection_complete)
         
+        # Rule Engine signals
+        self.rule_signals = RuleSignals()
+        self.rule_signals.progress_updated.connect(self._update_progress_with_message)
+        self.rule_signals.evaluation_complete.connect(self._rule_evaluation_complete)
+        
         # Log signals
         self.log_signals = LogSignals()
         self.log_signals.progress_updated.connect(self._update_progress)
@@ -124,9 +137,8 @@ class MainWindow(QMainWindow):
         # Dashboards
         self.overview_dashboard = None
         self.network_flow_dashboard = None
-        self.timeline_dashboard = None
-        self.graph_view_dashboard = None
-        self.ai_insights_dashboard = None  # Added AI Insights dashboard
+        self.event_analysis_dashboard = None
+        self.search_widget = None
         
         # Core components
         self.pcap_processor = None
@@ -134,6 +146,12 @@ class MainWindow(QMainWindow):
         self.ai_engine = AIEngine(self.config)
         self.threat_client = VirusTotalClient(self.config)
         self.threat_classifier = None
+        
+        # Rule engine setup
+        rules_dir = self.config.get("paths.rules_dir", None)
+        self.rule_engine = RuleEngine(rules_dir)
+        if self.config.get("analysis.enable_custom_rules", True):
+            self.rule_engine.load_rules()
         
         # Initialize UI
         self._init_ui()
@@ -146,6 +164,23 @@ class MainWindow(QMainWindow):
         # Set window properties
         self.setWindowTitle("Net4 - Network Forensic Analysis")
         self.resize(1200, 800)
+        
+        # Load and apply the dark theme stylesheet
+        try:
+            stylesheet_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 
+                                         "assets", "styles", "dark_theme.qss")
+            with open(stylesheet_path, "r") as f:
+                self.setStyleSheet(f.read())
+            self.logger.info("Applied dark theme stylesheet")
+        except Exception as e:
+            self.logger.error(f"Failed to load stylesheet: {str(e)}")
+            # Fallback to basic styling if stylesheet fails to load
+            self.setStyleSheet("""
+            QWidget { background-color: #1e1e2e; color: #ffffff; }
+            QPushButton { background-color: #2d74da; color: #ffffff; padding: 5px; }
+            QTabBar::tab { background-color: #2e2e3e; color: #909090; padding: 8px 16px; }
+            QTabBar::tab:selected { background-color: #2d74da; color: #ffffff; }
+            """)
         
         # Set central widget
         self.setCentralWidget(self.central_widget)
@@ -227,6 +262,8 @@ class MainWindow(QMainWindow):
         ai_chat_action.triggered.connect(self._open_ai_chat)
         analysis_menu.addAction(ai_chat_action)
         
+        analysis_menu.addSeparator()
+        
         detect_anomalies_action = QAction("Detect &Anomalies", self)
         detect_anomalies_action.triggered.connect(self._detect_anomalies)
         analysis_menu.addAction(detect_anomalies_action)
@@ -234,6 +271,23 @@ class MainWindow(QMainWindow):
         threat_intel_action = QAction("&Threat Intelligence Lookup", self)
         threat_intel_action.triggered.connect(self._lookup_threat_intel)
         analysis_menu.addAction(threat_intel_action)
+        
+        # Detection menu (new)
+        detection_menu = self.menuBar().addMenu("&Detection")
+        
+        run_rules_action = QAction("&Evaluate Custom Rules", self)
+        run_rules_action.triggered.connect(self._run_rules_evaluation)
+        detection_menu.addAction(run_rules_action)
+        
+        manage_rules_action = QAction("&Manage Custom Rules", self)
+        manage_rules_action.triggered.connect(self._open_rules_manager)
+        detection_menu.addAction(manage_rules_action)
+        
+        detection_menu.addSeparator()
+        
+        import_rules_action = QAction("&Import Rules", self)
+        import_rules_action.triggered.connect(self._import_rules)
+        detection_menu.addAction(import_rules_action)
         
         # Tools menu
         tools_menu = self.menuBar().addMenu("&Tools")
@@ -257,73 +311,86 @@ class MainWindow(QMainWindow):
         help_menu.addAction(about_action)
     
     def _create_toolbar(self):
-        """Create application toolbar"""
+        """Create application toolbar with essential actions only"""
         main_toolbar = QToolBar("Main Toolbar", self)
         main_toolbar.setObjectName("mainToolbar")  # Set object name to avoid Qt warning
         main_toolbar.setIconSize(QSize(24, 24))
         self.addToolBar(main_toolbar)
         
-        # New session
+        # File actions group
         new_action = QAction(QIcon.fromTheme("document-new", QIcon("assets/icons/new.png")), "New Session", self)
         new_action.triggered.connect(self._new_session)
         main_toolbar.addAction(new_action)
         
-        # Open session
         open_action = QAction(QIcon.fromTheme("document-open", QIcon("assets/icons/open.png")), "Open Session", self)
         open_action.triggered.connect(self._open_session)
         main_toolbar.addAction(open_action)
         
-        # Save session
         save_action = QAction(QIcon.fromTheme("document-save", QIcon("assets/icons/save.png")), "Save Session", self)
         save_action.triggered.connect(self._save_session)
         main_toolbar.addAction(save_action)
         
         main_toolbar.addSeparator()
         
-        # Import PCAP
+        # Import group - primary actions for data import
         import_pcap_action = QAction(QIcon("assets/icons/pcap.png"), "Import PCAP", self)
         import_pcap_action.triggered.connect(self._import_pcap)
+        import_pcap_action.setToolTip("Import PCAP file for analysis")
         main_toolbar.addAction(import_pcap_action)
-        
-        # Import log
-        import_log_action = QAction(QIcon("assets/icons/log.png"), "Import Log", self)
-        import_log_action.triggered.connect(self._import_log)
-        main_toolbar.addAction(import_log_action)
         
         main_toolbar.addSeparator()
         
-        # AI analysis
-        ai_action = QAction(QIcon("assets/icons/ai.png"), "AI Analysis", self)
+        # Analysis group - most important analysis actions
+        ai_action = QAction(QIcon("assets/icons/ai.png"), "Analyze", self)
         ai_action.triggered.connect(self._run_ai_analysis)
+        ai_action.setToolTip("Run automatic AI analysis on data")
         main_toolbar.addAction(ai_action)
         
-        # AI chat
-        ai_chat_action = QAction(QIcon("assets/icons/chat.png"), "AI Chat", self)
-        ai_chat_action.triggered.connect(self._open_ai_chat)
-        main_toolbar.addAction(ai_chat_action)
-        
-        # Anomaly detection
-        anomaly_action = QAction(QIcon("assets/icons/anomaly.png"), "Detect Anomalies", self)
-        anomaly_action.triggered.connect(self._detect_anomalies)
-        main_toolbar.addAction(anomaly_action)
-        
-        # Threat intelligence
-        threat_action = QAction(QIcon("assets/icons/threat.png"), "Threat Intelligence", self)
+        # Threat intelligence - key feature
+        threat_action = QAction(QIcon("assets/icons/threat.png"), "Lookup Threats", self)
         threat_action.triggered.connect(self._lookup_threat_intel)
+        threat_action.setToolTip("Look up potential threats in threat intelligence databases")
         main_toolbar.addAction(threat_action)
     
     def _setup_entity_dock(self):
         """Setup entity dock panel"""
         self.entity_dock.setObjectName("networkEntitiesDock")  # Set object name to avoid Qt warning
         
-        # Create tree widget
+        # Create container widget to add title and controls
+        entity_container = QWidget()
+        entity_layout = QVBoxLayout(entity_container)
+        entity_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Add header label
+        header_label = QLabel("Network Entities")
+        header_label.setProperty("header", True)  # Use CSS styling
+        header_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        header_font = QFont()
+        header_font.setBold(True)
+        header_font.setPointSize(11)
+        header_label.setFont(header_font)
+        header_label.setContentsMargins(5, 5, 5, 5)
+        entity_layout.addWidget(header_label)
+        
+        # Create tree widget with modern styling
         self.entity_tree = QTreeWidget()
         self.entity_tree.setHeaderLabels(["Entity", "Type", "Threat Level"])
         self.entity_tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.entity_tree.customContextMenuRequested.connect(self._show_entity_context_menu)
+        self.entity_tree.setAlternatingRowColors(True)
+        self.entity_tree.setAnimated(True)
+        self.entity_tree.setUniformRowHeights(True)
+        self.entity_tree.setAllColumnsShowFocus(True)
+        
+        # Configure header
+        header = self.entity_tree.header()
+        header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        header.setStretchLastSection(False)
+        
+        entity_layout.addWidget(self.entity_tree)
         
         # Set dock widget
-        self.entity_dock.setWidget(self.entity_tree)
+        self.entity_dock.setWidget(entity_container)
         self.entity_dock.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | 
                                         Qt.DockWidgetArea.RightDockWidgetArea)
         
@@ -727,11 +794,225 @@ class MainWindow(QMainWindow):
             self.ai_engine = AIEngine(self.config)
             self.threat_client = VirusTotalClient(self.config)
             
+            # Update rule engine with new settings
+            rules_dir = self.config.get("paths.rules_dir", None)
+            if rules_dir:
+                self.rule_engine = RuleEngine(rules_dir)
+                if self.config.get("analysis.enable_custom_rules", True):
+                    self.rule_engine.load_rules()
+            
             # Update TShark path if session exists
             if self.session and self.pcap_processor:
                 tshark_path = self.config.get("paths.tshark", "")
                 if tshark_path:
                     self.pcap_processor.tshark_path = tshark_path
+    
+    def _open_rules_manager(self):
+        """Open rules manager dialog"""
+        if not self.config.get("analysis.enable_custom_rules", True):
+            QMessageBox.information(
+                self, "Custom Rules Disabled",
+                "Custom rules are disabled in settings. Enable them in Settings > Analysis."
+            )
+            return
+        
+        dialog = RuleManagerDialog(self)
+        dialog.exec()
+        
+        # Reload rules after dialog closes
+        self.rule_engine.load_rules()
+    
+    def _import_rules(self):
+        """Import rules from file"""
+        if not self.config.get("analysis.enable_custom_rules", True):
+            QMessageBox.information(
+                self, "Custom Rules Disabled",
+                "Custom rules are disabled in settings. Enable them in Settings > Analysis."
+            )
+            return
+            
+        # Open file dialog
+        file_paths, _ = QFileDialog.getOpenFileNames(
+            self, "Import Rules",
+            "",
+            "Rule Files (*.yaml *.yml *.json);;All Files (*)"
+        )
+        
+        if not file_paths:
+            return
+        
+        # Import rules
+        imported_count = 0
+        error_count = 0
+        
+        for file_path in file_paths:
+            try:
+                # Add rules file to rules directory
+                rules_dir = self.config.get("paths.rules_dir", None) or self.rule_engine.rules_dir
+                target_path = os.path.join(rules_dir, os.path.basename(file_path))
+                
+                # Copy file
+                import shutil
+                shutil.copy2(file_path, target_path)
+                
+                imported_count += 1
+                
+            except Exception as e:
+                self.logger.error(f"Error importing rule file {file_path}: {str(e)}")
+                error_count += 1
+        
+        # Reload rules
+        self.rule_engine.load_rules()
+        
+        # Show result
+        if error_count == 0:
+            QMessageBox.information(
+                self, "Import Successful",
+                f"Successfully imported {imported_count} rule file(s)."
+            )
+        else:
+            QMessageBox.warning(
+                self, "Import Completed with Errors",
+                f"Imported {imported_count} rule file(s), but {error_count} file(s) could not be imported."
+            )
+    
+    def _run_rules_evaluation(self):
+        """Run rules evaluation on current session"""
+        if not self.session:
+            QMessageBox.warning(
+                self, "No Active Session",
+                "Please create or open a session before evaluating rules."
+            )
+            return
+        
+        # Check if there's data to analyze
+        if not self.session.packets and not self.session.network_entities:
+            QMessageBox.warning(
+                self, "No Data to Analyze",
+                "Please import data (PCAP, logs) before evaluating rules."
+            )
+            return
+        
+        # Check if rules are enabled
+        if not self.config.get("analysis.enable_custom_rules", True):
+            QMessageBox.information(
+                self, "Custom Rules Disabled",
+                "Custom rules are disabled in settings. Enable them in Settings > Analysis."
+            )
+            return
+        
+        # Check if rules are loaded
+        if not self.rule_engine.rules:
+            reply = QMessageBox.question(
+                self, "No Rules Loaded",
+                "No custom rules are loaded. Would you like to manage rules now?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            
+            if reply == QMessageBox.StandardButton.Yes:
+                self._open_rules_manager()
+            return
+        
+        # Update status
+        self.status_bar.showMessage("Evaluating custom rules...")
+        self.progress_bar.setVisible(True)
+        
+        # Run rules evaluation asynchronously
+        def progress_callback(message, progress):
+            self.rule_signals.progress_updated.emit(message, progress)
+        
+        def completion_callback(result):
+            self.rule_signals.evaluation_complete.emit(result)
+        
+        # Run evaluation in a separate thread
+        thread = threading.Thread(
+            target=self._run_rules_evaluation_thread,
+            args=(self.session, progress_callback, completion_callback)
+        )
+        thread.daemon = True
+        thread.start()
+    
+    def _run_rules_evaluation_thread(self, session, progress_callback, completion_callback):
+        """
+        Thread function for rules evaluation
+        
+        Args:
+            session: Analysis session
+            progress_callback: Progress callback function
+            completion_callback: Completion callback function
+        """
+        try:
+            # Update progress
+            progress_callback("Evaluating custom rules...", 0.0)
+            
+            # Evaluate rules
+            results = self.rule_engine.evaluate_session(session)
+            
+            # Update progress
+            progress_callback("Rules evaluation complete", 1.0)
+            
+            # Call completion callback
+            completion_callback(results)
+            
+        except Exception as e:
+            self.logger.error(f"Error evaluating rules: {str(e)}")
+            completion_callback({"error": str(e)})
+    
+    def _rule_evaluation_complete(self, results):
+        """
+        Handle rule evaluation completion
+        
+        Args:
+            results: Evaluation results
+        """
+        self.progress_bar.setVisible(False)
+        
+        if "error" in results:
+            QMessageBox.critical(
+                self, "Error in Rule Evaluation",
+                f"An error occurred during rule evaluation:\n{results['error']}"
+            )
+            self.status_bar.showMessage("Rule evaluation failed", 3000)
+            return
+        
+        # Update UI
+        self._update_entity_tree()
+        self._update_dashboards()
+        
+        # Show results
+        matches_count = len(results.get("matches", []))
+        connections_matched = results.get("stats", {}).get("connections_matched", 0)
+        rules_triggered = results.get("stats", {}).get("unique_rules_triggered", 0)
+        
+        self.status_bar.showMessage(
+            f"Rule evaluation complete: {matches_count} matches from {rules_triggered} rules",
+            5000
+        )
+        
+        # Show detailed results if matches found
+        if matches_count > 0:
+            # Group by severity
+            severity_counts = {"high": 0, "medium": 0, "low": 0}
+            
+            for match in results.get("matches", []):
+                severity = match.get("severity", "low")
+                severity_counts[severity] += 1
+            
+            message = (
+                f"Rules evaluation found {matches_count} rule matches:\n"
+                f"• High severity: {severity_counts['high']}\n"
+                f"• Medium severity: {severity_counts['medium']}\n"
+                f"• Low severity: {severity_counts['low']}\n\n"
+                f"Triggered {rules_triggered} unique rules across {connections_matched} connections."
+            )
+            
+            if severity_counts["high"] > 0:
+                QMessageBox.warning(self, "Rule Matches Found", message)
+            else:
+                QMessageBox.information(self, "Rule Matches Found", message)
+            
+            # Switch to overview dashboard to show results
+            self.tab_widget.setCurrentWidget(self.overview_dashboard)
     
     def _show_about(self):
         """Show about dialog"""
@@ -927,16 +1208,41 @@ class MainWindow(QMainWindow):
         # Create dashboards
         self.overview_dashboard = OverviewDashboard(self.session, self)
         self.network_flow_dashboard = NetworkFlowDashboard(self.session, self)
-        self.timeline_dashboard = TimelineDashboard(self.session, self)
-        self.graph_view_dashboard = GraphViewDashboard(self.session, self)
-        self.ai_insights_dashboard = AIInsightsDashboard(self.session, self, self)
+        self.event_analysis_dashboard = EventAnalysisDashboard()
+        self.ai_insights_dashboard = AIInsightsDashboard(self.session, self)
         
-        # Add dashboard tabs
-        self.tab_widget.addTab(self.overview_dashboard, "Overview")
-        self.tab_widget.addTab(self.network_flow_dashboard, "Network Flow")
-        self.tab_widget.addTab(self.timeline_dashboard, "Timeline")
-        self.tab_widget.addTab(self.graph_view_dashboard, "Graph View")
-        self.tab_widget.addTab(self.ai_insights_dashboard, "AI Assistant")
+        # Set dashboard properties
+        for dashboard in [self.overview_dashboard, self.network_flow_dashboard, 
+                         self.event_analysis_dashboard, self.ai_insights_dashboard]:
+            dashboard.setProperty("dashboard", True)
+        
+        # Set session data
+        if self.session:
+            self.event_analysis_dashboard.set_session(self.session)
+        
+        # Add global search widget to main layout as hidden widget
+        self.search_widget = GlobalSearchWidget()
+        # Will use the global stylesheet already applied
+        if self.session:
+            self.search_widget.set_session(self.session)
+        self.search_widget.item_selected.connect(self._on_search_result_selected)
+        
+        # Add dashboard tabs with clear, simple names
+        self.tab_widget.addTab(self.overview_dashboard, "Dashboard")
+        self.tab_widget.addTab(self.network_flow_dashboard, "Traffic")
+        self.tab_widget.addTab(self.event_analysis_dashboard, "Events")
+        self.tab_widget.addTab(self.ai_insights_dashboard, "AI Analysis")
+        
+        # Add dedicated search button in toolbar
+        search_action = QAction(QIcon.fromTheme("edit-find", QIcon("assets/icons/search.png")), "Global Search", self)
+        search_action.triggered.connect(self._show_global_search)
+        
+        # Add to main toolbar if it exists
+        for toolbar in self.findChildren(QToolBar):
+            if toolbar.objectName() == "mainToolbar":
+                toolbar.addSeparator()
+                toolbar.addAction(search_action)
+                break
         
         # Connect signals
         self.tab_widget.currentChanged.connect(self._tab_changed)
@@ -949,14 +1255,74 @@ class MainWindow(QMainWindow):
         if self.network_flow_dashboard:
             self.network_flow_dashboard.update_dashboard()
             
-        if self.timeline_dashboard:
-            self.timeline_dashboard.update_dashboard()
+        if self.event_analysis_dashboard:
+            self.event_analysis_dashboard.set_session(self.session)
+    
+    def _show_global_search(self):
+        """Show global search dialog"""
+        if not self.session:
+            QMessageBox.warning(
+                self, "No Active Session",
+                "Please create or open a session before using search."
+            )
+            return
+        
+        # Create search dialog
+        search_dialog = QDialog(self)
+        search_dialog.setWindowTitle("Global Search")
+        search_dialog.resize(800, 600)
+        
+        layout = QVBoxLayout(search_dialog)
+        
+        # Add search widget
+        if self.search_widget.parent():
+            self.search_widget.setParent(None)
+        
+        layout.addWidget(self.search_widget)
+        
+        # Make sure session is set
+        self.search_widget.set_session(self.session)
+        
+        # Show dialog
+        search_dialog.exec()
+    
+    def _on_search_result_selected(self, result):
+        """
+        Handle search result selection
+        
+        Args:
+            result: Selected search result
+        """
+        # Close search dialog if open
+        if self.sender() and self.sender() == self.search_widget:
+            parent_dialog = self.search_widget.parent()
+            if isinstance(parent_dialog, QDialog):
+                parent_dialog.accept()
+        
+        # Process result based on type
+        item_type = result.get("type", "")
+        
+        if item_type == "packet":
+            # Switch to network flow and filter
+            self.tab_widget.setCurrentWidget(self.network_flow_dashboard)
+            time_field = result.get("time")
+            if time_field:
+                self.network_flow_dashboard.focus_on_time(time_field)
             
-        if self.graph_view_dashboard:
-            self.graph_view_dashboard.update_dashboard()
+        elif item_type == "entity":
+            # Switch to overview and highlight entity
+            self.tab_widget.setCurrentWidget(self.event_analysis_dashboard)
+            entity_value = result.get("value")
+            if entity_value:
+                self.event_analysis_dashboard.focus_on_entity(entity_value)
             
-        if self.ai_insights_dashboard:
-            self.ai_insights_dashboard.update_dashboard()
+        elif item_type in ["connection", "anomaly"]:
+            # Switch to event analysis
+            self.tab_widget.setCurrentWidget(self.event_analysis_dashboard)
+            # Pass result for highlighting
+            time_field = result.get("time")
+            if time_field:
+                self.event_analysis_dashboard.focus_on_time(time_field)
     
     def _update_entity_tree(self):
         """Update entity tree with current session data"""
@@ -995,13 +1361,28 @@ class MainWindow(QMainWindow):
                 # Store entity ID in item data
                 entity_item.setData(0, Qt.ItemDataRole.UserRole, entity.id)
                 
-                # Set item color based on threat level
+                # Set item style based on threat level with modern badge-like display
+                font = entity_item.font(2)
+                font.setBold(True)
+                entity_item.setFont(2, font)
+                
+                # Create modern "badge" appearance for threat level
                 if entity.threat_level == "malicious":
-                    entity_item.setForeground(2, Qt.GlobalColor.red)
+                    entity_item.setForeground(2, QColor(255, 255, 255))  # White text
+                    entity_item.setBackground(2, QColor(185, 28, 28))    # Bright red background (matches CSS)
+                    entity_item.setText(2, "   MALICIOUS   ")  # Add padding for better appearance
                 elif entity.threat_level == "suspicious":
-                    entity_item.setForeground(2, Qt.GlobalColor.darkYellow)
+                    entity_item.setForeground(2, QColor(255, 255, 255))  # White text
+                    entity_item.setBackground(2, QColor(217, 119, 6))    # Bright orange background (matches CSS)
+                    entity_item.setText(2, "   SUSPICIOUS   ")
                 elif entity.threat_level == "safe":
-                    entity_item.setForeground(2, Qt.GlobalColor.darkGreen)
+                    entity_item.setForeground(2, QColor(255, 255, 255))  # White text
+                    entity_item.setBackground(2, QColor(21, 128, 61))    # Bright green background (matches CSS)
+                    entity_item.setText(2, "   SAFE   ")
+                else:  # unknown
+                    entity_item.setForeground(2, QColor(255, 255, 255))  # White text
+                    entity_item.setBackground(2, QColor(75, 85, 99))     # Gray background (matches CSS)
+                    entity_item.setText(2, "   UNKNOWN   ")
         
         # Resize columns to content
         for i in range(self.entity_tree.columnCount()):
@@ -1089,6 +1470,17 @@ class MainWindow(QMainWindow):
             f"{result.get('ip_entities', 0)} IPs, {result.get('domain_entities', 0)} domains",
             5000
         )
+        
+        # Run automatic rules evaluation if enabled
+        if (self.config.get("analysis.enable_custom_rules", True) and 
+            self.config.get("detection.run_rules_on_import", True) and
+            len(self.rule_engine.rules) > 0):
+            
+            # Show message that rules evaluation is starting
+            self.status_bar.showMessage("Running automatic rules evaluation...", 2000)
+            
+            # Run rules evaluation after a short delay
+            QTimer.singleShot(2000, self._run_rules_evaluation)
     
     def _log_processing_complete(self, result):
         """

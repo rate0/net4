@@ -34,6 +34,7 @@ class Session:
         self.ai_insights: List[Dict[str, Any]] = []
         self.threat_intelligence: Dict[str, ThreatInfo] = {}
         self.anomalies: List[Dict[str, Any]] = []
+        self.rule_matches: List[Dict[str, Any]] = []
         
         # Session metadata
         self.metadata: Dict[str, Any] = {
@@ -73,6 +74,18 @@ class Session:
         """Add a network entity to the session"""
         self.network_entities[entity.id] = entity
         self.last_modified = datetime.now()
+        
+    def get_network_entity(self, entity_id: str) -> Optional[NetworkEntity]:
+        """
+        Get a network entity by ID
+        
+        Args:
+            entity_id: ID of the entity to retrieve
+            
+        Returns:
+            NetworkEntity if found, None otherwise
+        """
+        return self.network_entities.get(entity_id)
     
     def add_connection(self, connection: Dict[str, Any]) -> None:
         """Add a network connection to the session"""
@@ -126,6 +139,11 @@ class Session:
         """Add a detected anomaly to the session"""
         self.anomalies.append(anomaly)
         self.last_modified = datetime.now()
+        
+    def add_rule_match(self, rule_match: Dict[str, Any]) -> None:
+        """Add a rule match to the session"""
+        self.rule_matches.append(rule_match)
+        self.last_modified = datetime.now()
     
     def update_metadata(self) -> None:
         """Update session metadata"""
@@ -152,6 +170,7 @@ class Session:
             "ai_insights": self.ai_insights,
             "threat_intelligence": {k: v.to_dict() for k, v in self.threat_intelligence.items()},
             "anomalies": self.anomalies,
+            "rule_matches": self.rule_matches,
             "metadata": self.metadata,
         }
     
@@ -193,6 +212,9 @@ class Session:
         
         # Load anomalies
         session.anomalies = data.get("anomalies", [])
+        
+        # Load rule matches
+        session.rule_matches = data.get("rule_matches", [])
         
         # Load metadata
         session.metadata = data.get("metadata", {})

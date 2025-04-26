@@ -135,6 +135,42 @@ class ExportDialog(QDialog):
         self.setWindowTitle("Export Data")
         self.setMinimumSize(500, 400)
         
+        # Apply dark theme stylesheet to export dialog
+        self.setStyleSheet("""
+            QDialog, QWidget, QTabWidget::pane, QGroupBox {
+                background-color: #2d2d2d;
+                color: #f0f0f0;
+            }
+            QLabel, QCheckBox, QRadioButton, QGroupBox::title {
+                color: #f0f0f0;
+            }
+            QLineEdit, QComboBox, QPushButton {
+                background-color: #3a3a3a;
+                color: #f0f0f0;
+                border: 1px solid #555555;
+                padding: 4px;
+            }
+            QTabBar::tab {
+                background-color: #3a3a3a;
+                color: #f0f0f0;
+                border: 1px solid #555555;
+                padding: 8px;
+            }
+            QTabBar::tab:selected {
+                background-color: #424242;
+                border-bottom: 2px solid #3498db;
+            }
+            QProgressBar {
+                border: 1px solid #555555;
+                background-color: #3a3a3a;
+                color: #f0f0f0;
+                text-align: center;
+            }
+            QProgressBar::chunk {
+                background-color: #3498db;
+            }
+        """)
+        
         # Main layout
         layout = QVBoxLayout(self)
         

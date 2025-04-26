@@ -2,10 +2,18 @@ import os
 import json
 import csv
 import threading
+import datetime
 from typing import Dict, List, Any, Optional, Callable, Set, TextIO, Union
 
 from ...models.session import Session
 from ...utils.logger import Logger
+
+# Custom JSON encoder to handle datetime objects
+class DateTimeEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, (datetime.datetime, datetime.date)):
+            return obj.isoformat()
+        return super().default(obj)
 
 class DataExporter:
     """
@@ -135,12 +143,12 @@ class DataExporter:
             if progress_callback:
                 progress_callback("Writing data to file", 0.9)
             
-            # Write to file
+            # Write to file using custom encoder for datetime objects
             with open(output_path, 'w') as f:
                 if pretty_print:
-                    json.dump(export_data, f, indent=2)
+                    json.dump(export_data, f, indent=2, cls=DateTimeEncoder)
                 else:
-                    json.dump(export_data, f)
+                    json.dump(export_data, f, cls=DateTimeEncoder)
             
             if progress_callback:
                 progress_callback("Export complete", 1.0)
