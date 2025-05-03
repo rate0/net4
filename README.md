@@ -31,7 +31,15 @@ A powerful desktop application for deep forensic analysis of network artifacts w
 - Detailed threat information panels showing comprehensive intelligence data
 - Automatic correlation between network entities and known threats
 
-### 5. Reporting & Exporting
+### 5. Custom Rules Engine
+- Create, manage and evaluate custom detection rules via intuitive UI
+- YAML-based rule format with flexible conditions and actions
+- Support for importing Suricata rules
+- Pre-configured rule sets for common threats (APT, malware)
+- Automated rule evaluation on data import
+- Rule manager dialog for organizing and editing rules
+
+### 6. Reporting & Exporting
 - Beautiful, detailed reports with AI insights and TI results
 - Export options: PDF, JSON, CSV
 - Customizable report templates with company branding
@@ -60,6 +68,9 @@ In-depth HTTP/HTTPS traffic analysis with request/response details, headers, and
 - Protocol and host filtering
 - Detailed request/response inspection
 - Header and body analysis
+- Content-type recognition
+- Traffic patterns visualization
+- Customizable traffic filters
 
 ### Timeline Dashboard
 Chronological view of events for incident response and forensic investigation:
@@ -99,60 +110,52 @@ pip install -r requirements.txt
 
 ### Running the Application
 
-We provide a unified launcher script that handles all execution modes:
+We provide a unified launcher script that handles everything automatically:
 
 ```bash
 # Make the script executable
 chmod +x run.sh
 
-# Normal execution
+# Run the application
 ./run.sh
-
-# With root privileges (for live capture)
-./run.sh --root
-
-# Install HTTP/HTTPS support
-./run.sh --setup-http
 ```
 
-This unified script provides several benefits:
+This single-command launcher provides several benefits:
+- **Zero-Configuration**: Just run it and everything works
 - **Automatic Setup**: Creates the Python virtual environment if needed
 - **Dependency Management**: Installs all required packages automatically
-- **Permission Handling**: Manages root privileges properly for live captures
-- **HTTP/HTTPS Support**: Sets up Scapy HTTP layer when needed
+- **First-Run Configuration**: Sets up HTTP/HTTPS support on first run
+- **Full Feature Access**: Automatically elevates privileges as needed for live capture
 - **Compatibility**: Works with both the Python source and compiled distributions
 
 ### Live Packet Capture
 
 When you need to capture live traffic:
 
-1. Run with the `--root` flag (required for interface access):
+1. Run the application (privileges are automatically elevated for live capture):
    ```bash
-   ./run.sh --root
+   ./run.sh
    ```
 
 2. Navigate to: File → Import → Live Capture
 
 3. In the live capture dialog:
    - Select your network interface
-   - Set optional BPF filters
+   - Set optional BPF filters (with common filter presets for HTTP, HTTPS, DNS)
    - Configure packet limits or duration
+   - View real-time statistics during capture
    - Click "Start Capture"
 
 ### HTTP/HTTPS Traffic Analysis
 
 To analyze web traffic:
 
-1. Enable HTTP/HTTPS support (one-time setup):
-   ```bash
-   ./run.sh --setup-http
-   ```
-
+1. HTTP/HTTPS support is automatically configured on first run
 2. Import a PCAP file containing web traffic
 3. Navigate to the "HTTP Analysis" dashboard tab
 4. Use the filtering options to focus on specific traffic
 
-You can also enable HTTP/HTTPS support through the application menu:
+You can also enable HTTP/HTTPS support through the application menu if needed:
 Tools → Install HTTP/HTTPS Support
 
 ## Configuration
