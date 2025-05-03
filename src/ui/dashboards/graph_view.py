@@ -660,7 +660,7 @@ class GraphViewDashboard(QWidget):
         self.content_splitter.addWidget(self.details_widget)
         
         # Set initial splitter sizes (graph view should be larger)
-        self.content_splitter.setSizes([700, 300])
+        self.content_splitter.setSizes([800, 200])
         
         # Add content splitter to layout
         layout.addWidget(self.content_splitter)

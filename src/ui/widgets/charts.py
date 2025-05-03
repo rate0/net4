@@ -1,3 +1,21 @@
+"""
+Charts module for Net4
+
+This module provides a collection of chart widgets for visualizing data in the Net4 application.
+All charts maintain a standard height of 300px for consistent dashboard display, with appropriate
+width-to-height ratios for each chart type.
+
+The module includes:
+- Base chart class with common functionality
+- Pie charts for showing distributions
+- Bar charts for comparisons
+- Time series charts for temporal data
+- Heatmap charts for showing 2D data intensity
+- Timeline charts for event visualization
+- Network graphs for entity relationship visualization
+- Chart widget for combining charts with titles and descriptions
+"""
+
 import warnings
 import matplotlib
 # Explicitly set the backend and suppress any warnings
@@ -12,9 +30,9 @@ import numpy as np
 from typing import List, Tuple, Dict, Any, Optional
 from datetime import datetime
 
-from PyQt6.QtWidgets import QSizePolicy, QVBoxLayout, QWidget, QLabel
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont
+from PyQt6.QtWidgets import QSizePolicy, QVBoxLayout, QWidget, QLabel, QToolBar, QPushButton, QSlider
+from PyQt6.QtCore import Qt, QSize
+from PyQt6.QtGui import QFont, QIcon
 
 
 def safe_tight_layout(fig, **kwargs):
@@ -70,14 +88,15 @@ class BaseChart(FigureCanvas):
         
         # Style the title with larger font and bold
         self.axes.title.set_color('#ffffff')
-        self.axes.title.set_fontsize(12)
+        self.axes.title.set_fontsize(14)
         self.axes.title.set_fontweight('bold')
         
         # Set title
         self.axes.set_title(title)
         
-        # Set size policy
+        # Set size policy for better responsiveness
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.setMinimumHeight(250)  # Reasonable minimum height
         self.updateGeometry()
     
     def clear(self):
@@ -90,18 +109,18 @@ class BaseChart(FigureCanvas):
 class PieChart(BaseChart):
     """Pie chart for showing distribution"""
     
-    def __init__(self, title: str, parent=None, height=200, dpi=100):
+    def __init__(self, title: str, parent=None, height=400, dpi=100):
         """
         Initialize pie chart
         
         Args:
             title: Chart title
             parent: Parent widget
-            height: Chart height in pixels
+            height: Chart height in pixels (default: 500px for better visibility)
             dpi: Chart resolution
         """
         # Calculate width based on height to maintain aspect ratio
-        width_inches = height / dpi
+        width_inches = height / dpi * 1.2  # Wider aspect ratio for better visibility 
         height_inches = height / dpi * 1.2  # Add 20% more height for labels
         
         super().__init__(title, parent, width_inches, height_inches, dpi)
@@ -220,18 +239,18 @@ class PieChart(BaseChart):
 class BarChart(BaseChart):
     """Bar chart for comparisons"""
     
-    def __init__(self, title: str, parent=None, height=200, dpi=100):
+    def __init__(self, title: str, parent=None, height=400, dpi=100):
         """
         Initialize bar chart
         
         Args:
             title: Chart title
             parent: Parent widget
-            height: Chart height in pixels
+            height: Chart height in pixels (default: 500px for better visibility)
             dpi: Chart resolution
         """
         # Calculate width based on height to maintain aspect ratio
-        width_inches = height / dpi * 1.33  # Wider aspect ratio for bar charts
+        width_inches = height / dpi * 1.6  # Wider aspect ratio for bar charts
         height_inches = height / dpi * 1.2  # Add 20% more height for labels
         
         super().__init__(title, parent, width_inches, height_inches, dpi)
@@ -320,18 +339,18 @@ class BarChart(BaseChart):
 class TimeSeriesChart(BaseChart):
     """Time series chart for showing data over time"""
     
-    def __init__(self, title: str, parent=None, height=200, dpi=100):
+    def __init__(self, title: str, parent=None, height=400, dpi=100):
         """
         Initialize time series chart
         
         Args:
             title: Chart title
             parent: Parent widget
-            height: Chart height in pixels
+            height: Chart height in pixels (default: 500px for better visibility)
             dpi: Chart resolution
         """
-        # Calculate width based on height to maintain aspect ratio
-        width_inches = height / dpi * 1.5  # Wider aspect ratio for time series
+        # Calculate width based on height to maintain aspect ratio - much wider for time series
+        width_inches = height / dpi * 2.5  # Even wider aspect ratio for time series
         height_inches = height / dpi * 1.2  # Add 20% more height for labels
         
         super().__init__(title, parent, width_inches, height_inches, dpi)
@@ -370,33 +389,38 @@ class TimeSeriesChart(BaseChart):
         timestamps = [item[0] for item in self.data]
         values = [item[1] for item in self.data]
         
-        # Plot the time series
+        # Plot the time series with improved styling
         self.axes.plot(
             timestamps, 
             values,
             marker='o',
             linestyle='-',
-            markersize=3,
-            linewidth=1.5,
-            color='#5a7d9a'
+            markersize=6,       # Larger markers
+            linewidth=2.5,      # Thicker line
+            color='#3a82f7'     # Brighter blue color
         )
         
-        # Fill area under the curve
+        # Fill area under the curve with more vibrant color
         self.axes.fill_between(
             timestamps, 
             values, 
             alpha=0.3, 
-            color='#5a7d9a'
+            color='#3a82f7'     # Matching fill color
         )
         
         # Format x-axis as dates
         self.fig.autofmt_xdate()
         
-        # Add grid
-        self.axes.grid(True, linestyle='--', alpha=0.7)
+        # Add grid with improved styling
+        self.axes.grid(True, linestyle='--', alpha=0.4, color='#8a8a9a')
         
         # Configure y-axis to start at 0
-        self.axes.set_ylim(0, max(values) * 1.1)  # Add 10% headroom
+        self.axes.set_ylim(0, max(values) * 1.2)  # Add 20% headroom
+        
+        # Make tick labels larger and more readable
+        self.axes.tick_params(axis='both', which='major', labelsize=10, colors='white')
+        self.axes.xaxis.label.set_fontsize(11)
+        self.axes.yaxis.label.set_fontsize(11)
         
         # Update the plot with safe tight layout
         safe_tight_layout(self.fig)
@@ -406,14 +430,14 @@ class TimeSeriesChart(BaseChart):
 class HeatmapChart(BaseChart):
     """Heatmap chart for showing 2D data intensity"""
     
-    def __init__(self, title: str, parent=None, height=200, dpi=100):
+    def __init__(self, title: str, parent=None, height=300, dpi=100):
         """
         Initialize heatmap chart
         
         Args:
             title: Chart title
             parent: Parent widget
-            height: Chart height in pixels
+            height: Chart height in pixels (default: 300px)
             dpi: Chart resolution
         """
         # Calculate width based on height to maintain aspect ratio
@@ -489,7 +513,10 @@ class HeatmapChart(BaseChart):
 
 
 class TimelineChart(BaseChart):
-    """Interactive timeline chart for events and time series data"""
+    """
+    Interactive timeline chart for events and time series data
+    Designed with a standard height of 300px for consistency across dashboards
+    """
     
     # Signal when a point on the timeline is selected
     from PyQt6.QtCore import pyqtSignal
@@ -502,7 +529,7 @@ class TimelineChart(BaseChart):
         Args:
             title: Chart title
             parent: Parent widget
-            height: Chart height in pixels
+            height: Chart height in pixels (default: 300px for consistent display across dashboards)
             dpi: Chart resolution
         """
         # Calculate width based on height to maintain aspect ratio
@@ -609,9 +636,24 @@ class TimelineChart(BaseChart):
             self.draw()
             return
         
-        # Extract times, types, and event groups
+        # Extract times and types
         times = [event["time"] for event in self.events]
         types = [event.get("type", "unknown") for event in self.events]
+        
+        # Set up time range
+        min_time = min(times)
+        max_time = max(times)
+        time_range = (max_time - min_time).total_seconds()
+        
+        # If time range is very small, add padding
+        if time_range < 60:  # Less than a minute
+            margin = timedelta(seconds=30)
+            min_time -= margin
+            max_time += margin
+        
+        # Set axis limits
+        self.axes.set_xlim(min_time, max_time)
+        self.axes.set_ylim(0, 1.2)  # Fixed height with room for labels
         
         # Group events by type for display
         event_groups = {}
@@ -620,6 +662,7 @@ class TimelineChart(BaseChart):
         
         # Plot events as scatter plots by type
         highlight_point = None
+        type_labels = []
         
         for event_type, indices in event_groups.items():
             event_times = [times[i] for i in indices]
@@ -629,7 +672,7 @@ class TimelineChart(BaseChart):
             color = self.event_types.get(event_type, "#999999")
             
             # Plot points
-            points = self.axes.scatter(
+            self.axes.scatter(
                 event_times, 
                 event_y,
                 marker='o',
@@ -637,24 +680,23 @@ class TimelineChart(BaseChart):
                 c=color,
                 alpha=0.7,
                 label=event_type.capitalize(),
-                picker=5,  # Enable picking (clicking)
-                zorder=10
+                picker=5  # Enable picking (clicking)
             )
             
-            # Store original events in point data
-            points.set_pickradius(5)
-            points.set_gid("events")
+            # Add type to legend list
+            type_labels.append(event_type.capitalize())
             
             # If we need to highlight a point, find its index
-            if highlight_event:
+            if highlight_event and highlight_event.get("type") == event_type:
                 for i, event in enumerate(self.events):
-                    if event == highlight_event and event.get("type") == event_type:
-                        highlight_point = (event_times[event_groups[event_type].index(i)], 1)
+                    if event == highlight_event:
+                        highlight_point = (event["time"], 1)
+                        break
         
         # Add connecting line
         self.axes.plot(
-            times, 
-            [1] * len(times),
+            [min_time, max_time], 
+            [1, 1],
             color="#dddddd",
             linewidth=2,
             zorder=5
@@ -668,7 +710,7 @@ class TimelineChart(BaseChart):
                 marker='o',
                 s=150,  # Larger size for highlight
                 facecolors='none',
-                edgecolors='black',
+                edgecolors='white',
                 linewidths=2,
                 zorder=15
             )
@@ -680,7 +722,7 @@ class TimelineChart(BaseChart):
         self.axes.set_yticks([])
         self.axes.set_yticklabels([])
         
-        # Add legend
+        # Add legend if we have multiple types
         if len(event_groups) > 1:
             self.axes.legend(loc='upper right')
         
@@ -688,7 +730,7 @@ class TimelineChart(BaseChart):
         self.axes.grid(True, linestyle='--', alpha=0.3, axis='x')
         
         # Update plot
-        self.fig.tight_layout(pad=1.5, w_pad=1.0, h_pad=1.0)
+        safe_tight_layout(self.fig)
         self.draw()
     
     def _on_pick(self, event):
@@ -698,29 +740,31 @@ class TimelineChart(BaseChart):
         Args:
             event: Pick event
         """
-        if event.artist.get_gid() == "events":
-            # Get the index of the point
+        # Get the index of the point
+        if hasattr(event, 'ind'):
             ind = event.ind[0]
             
-            # Find the corresponding event
-            # We need to map back to the original events list
-            points_artist = event.artist
-            times = [event["time"] for event in self.events]
-            clicked_time = points_artist.get_offsets()[ind][0]
+            # Get artist
+            artist = event.artist
+            data = artist.get_offsets()
             
-            # Find the closest event by time
-            event_idx = min(range(len(times)), key=lambda i: abs((times[i] - clicked_time).total_seconds()))
-            selected_event = self.events[event_idx]
-            
-            # Emit signal
-            self.point_selected.emit(selected_event)
-            
-            # Update chart to highlight this point
-            self._update_chart(highlight_event=selected_event)
+            # Get the time value
+            if len(data) > ind:
+                time_val = data[ind, 0]
+                
+                # Find matching event
+                for event_data in self.events:
+                    if abs((event_data["time"] - time_val).total_seconds()) < 0.1:
+                        # Emit signal
+                        self.point_selected.emit(event_data)
+                        
+                        # Update chart to highlight this point
+                        self._update_chart(highlight_event=event_data)
+                        break
 
 
 class NetworkGraph(QWidget):
-    """Interactive network graph visualization"""
+    """Interactive network graph visualization with enhanced controls"""
     
     # Signal when a node is selected
     from PyQt6.QtCore import pyqtSignal
@@ -740,21 +784,106 @@ class NetworkGraph(QWidget):
         self.edges = []
         self.graph = None
         self.selected_node = None
+        self.node_positions = None  # Store node positions for re-use
+        self.zoom_level = 1.0
         
-        # Setup matplotlib
+        # Setup matplotlib with enhanced interaction
         self.fig = plt.figure(figsize=(6, 5), dpi=100)
         self.canvas = FigureCanvas(self.fig)
+        self.ax = self.fig.add_subplot(111)
         
         # Create layout
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.canvas)
         
-        # Connect events
+        # Add toolbar with zoom controls
+        toolbar = QToolBar()
+        toolbar.setIconSize(QSize(16, 16))
+        
+        # Zoom controls
+        zoom_in_button = QPushButton("Zoom +")
+        zoom_in_button.setFixedWidth(70)
+        zoom_in_button.clicked.connect(self._zoom_in)
+        toolbar.addWidget(zoom_in_button)
+        
+        zoom_out_button = QPushButton("Zoom -")
+        zoom_out_button.setFixedWidth(70)
+        zoom_out_button.clicked.connect(self._zoom_out)
+        toolbar.addWidget(zoom_out_button)
+        
+        reset_button = QPushButton("Reset")
+        reset_button.setFixedWidth(70)
+        reset_button.clicked.connect(self._reset_view)
+        toolbar.addWidget(reset_button)
+        
+        # Add toolbar to layout
+        layout.insertWidget(0, toolbar)
+        
+        # Connect events with more interactive capabilities
         self.canvas.mpl_connect('button_press_event', self._on_click)
+        self.canvas.mpl_connect('scroll_event', self._on_scroll)
+        self.canvas.mpl_connect('motion_notify_event', self._on_motion)
+        self.canvas.mpl_connect('button_release_event', self._on_release)
+        
+        # Initialize drag state
+        self._drag_start = None
+        self._drag_in_progress = False
         
         # Initial draw
         self._draw_empty_graph()
+    
+    def _zoom_in(self):
+        """Zoom in on the graph"""
+        self.zoom_level *= 1.2
+        self._update_view()
+    
+    def _zoom_out(self):
+        """Zoom out on the graph"""
+        self.zoom_level /= 1.2
+        self._update_view()
+    
+    def _reset_view(self):
+        """Reset graph view to default"""
+        self.zoom_level = 1.0
+        self._update_view()
+    
+    def _update_view(self):
+        """Update the graph view with current zoom level"""
+        if hasattr(self, 'ax') and self.graph and self.graph.number_of_nodes() > 0:
+            # Redraw the graph preserving current selection
+            self._draw_graph(preserve_layout=True)
+    
+    def _on_scroll(self, event):
+        """Handle scroll events for zooming"""
+        if event.button == 'up':
+            self.zoom_level *= 1.1
+        elif event.button == 'down':
+            self.zoom_level /= 1.1
+        self._update_view()
+    
+    def _on_motion(self, event):
+        """Handle motion events for panning"""
+        if self._drag_in_progress and event.xdata and event.ydata:
+            if self._drag_start:
+                # Calculate drag distance
+                dx = event.xdata - self._drag_start[0]
+                dy = event.ydata - self._drag_start[1]
+                
+                # Pan the view
+                self.ax.set_xlim(self.ax.get_xlim() - dx)
+                self.ax.set_ylim(self.ax.get_ylim() - dy)
+                
+                # Update canvas
+                self.canvas.draw_idle()
+                
+                # Update drag start point
+                self._drag_start = (event.xdata, event.ydata)
+    
+    def _on_release(self, event):
+        """Handle button release events"""
+        self._drag_in_progress = False
+        self._drag_start = None
     
     def set_data(self, nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]]):
         """
@@ -774,6 +903,8 @@ class NetworkGraph(QWidget):
                 - weight: edge weight (float, optional)
                 - original: original connection data (optional)
         """
+        import networkx as nx
+        
         self.nodes = nodes
         self.edges = edges
         
@@ -784,65 +915,6 @@ class NetworkGraph(QWidget):
                 self.node_data[node['id']] = node
         
         # Create networkx graph
-        self._create_graph()
-        
-        # Increase base node size
-        self._adjust_node_sizes(scale_factor=2.0)
-        
-        # Draw graph
-        self._draw_graph()
-    
-    def select_node(self, node_id):
-        """
-        Select a specific node
-        
-        Args:
-            node_id: ID of node to select
-        """
-        # Find node with this ID
-        for node in self.nodes:
-            if node["id"] == node_id:
-                self.selected_node = node
-                self.node_selected.emit(node)
-                self._draw_graph()  # Redraw with highlight
-                break
-    
-    def _adjust_node_sizes(self, scale_factor=2.0):
-        """
-        Adjust node sizes by a scaling factor
-        
-        Args:
-            scale_factor: Factor to multiply current sizes by
-        """
-        if hasattr(self, 'graph') and self.graph:
-            # Initialize node_sizes if it doesn't exist
-            if not hasattr(self, 'node_sizes'):
-                self.node_sizes = {}
-                
-            # Scale all node sizes up
-            for node in self.graph.nodes:
-                # Get current node size if it exists
-                current_size = 300  # Default size
-                if hasattr(self, 'node_sizes') and node in self.node_sizes:
-                    current_size = self.node_sizes[node]
-                
-                # Scale up the size
-                self.node_sizes[node] = current_size * scale_factor
-    
-    def focus_on_entity(self, entity_value):
-        """
-        Focus on a specific entity in the graph
-        
-        Args:
-            entity_value: Entity value to focus on
-        """
-        self.select_node(entity_value)
-    
-    def _create_graph(self):
-        """Create networkx graph from nodes and edges"""
-        import networkx as nx
-        
-        # Create graph
         self.graph = nx.DiGraph()
         
         # Add nodes
@@ -864,6 +936,33 @@ class NetworkGraph(QWidget):
                 weight=edge.get("weight", 1.0),
                 original=edge.get("original")
             )
+        
+        # Draw graph
+        self._draw_graph()
+    
+    def select_node(self, node_id):
+        """
+        Select a specific node
+        
+        Args:
+            node_id: ID of node to select
+        """
+        # Find node with this ID
+        for node in self.nodes:
+            if node["id"] == node_id:
+                self.selected_node = node
+                self.node_selected.emit(node)
+                self._draw_graph()  # Redraw with highlight
+                break
+    
+    def focus_on_entity(self, entity_value):
+        """
+        Focus on a specific entity in the graph
+        
+        Args:
+            entity_value: Entity value to focus on
+        """
+        self.select_node(entity_value)
     
     def _draw_empty_graph(self):
         """Draw empty graph with message in dark theme"""
@@ -886,36 +985,50 @@ class NetworkGraph(QWidget):
         ax.set_axis_off()
         self.canvas.draw()
     
-    def _draw_graph(self):
-        """Draw the graph with networkx and matplotlib"""
+    def _draw_graph(self, preserve_layout=False):
+        """
+        Draw the graph with networkx and matplotlib
+        
+        Args:
+            preserve_layout: Whether to preserve the previous node positions
+        """
+        import networkx as nx
+        
         if not self.graph or self.graph.number_of_nodes() == 0:
             self._draw_empty_graph()
             return
         
-        import networkx as nx
-        
         # Clear figure
         self.fig.clear()
         ax = self.fig.add_subplot(111)
+        self.ax = ax  # Store reference for panning
         
         # Set dark background for graph
         self.fig.patch.set_facecolor('#2d2d2d')
         ax.set_facecolor('#303030')
         
-        # Create positions with spring layout - use much tighter layout
-        try:
-            # Try to get a nice layout by adjusting k (optimal distance)
-            num_nodes = self.graph.number_of_nodes()
+        # Get node positions - either reuse or calculate new ones
+        if preserve_layout and self.node_positions is not None:
+            # Reuse existing positions
+            pos = self.node_positions
+        else:
+            # Create positions with spring layout - use tighter layout
+            try:
+                # Try to get a nice layout by adjusting k (optimal distance)
+                num_nodes = self.graph.number_of_nodes()
+                
+                # Use very small k value to bring nodes much closer together
+                # The smaller the k value, the closer nodes will be
+                k_value = 0.5 / (num_nodes ** 0.5)  # Use 0.5 instead of 0.8 for tighter clusters
+                
+                # Increase iterations for better layout quality
+                pos = nx.spring_layout(self.graph, k=k_value, seed=42, iterations=200)
+            except Exception:
+                # Fallback to default layout but still tight
+                pos = nx.spring_layout(self.graph, seed=42, k=0.5, iterations=100)
             
-            # Use very small k value to bring nodes much closer together
-            # The smaller the k value, the closer nodes will be
-            k_value = 0.5 / (num_nodes ** 0.5)  # Use 0.5 instead of 0.8 for tighter clusters
-            
-            # Increase iterations for better layout quality
-            pos = nx.spring_layout(self.graph, k=k_value, seed=42, iterations=200)
-        except Exception:
-            # Fallback to default layout but still tight
-            pos = nx.spring_layout(self.graph, seed=42, k=0.5, iterations=100)
+            # Store positions for reuse
+            self.node_positions = pos
         
         # Define node colors with highly saturated, vibrant colors for maximum contrast
         node_colors = []
@@ -930,107 +1043,81 @@ class NetworkGraph(QWidget):
             else:
                 node_colors.append("#2979ff")  # Vibrant blue
         
-        # Define node sizes based on centrality or use predefined sizes
-        # Use MUCH larger node sizes for better visibility
-        try:
-            if hasattr(self, 'node_sizes') and self.node_sizes:
-                # Use predefined sizes but ensure they're large enough
-                node_sizes = [max(self.node_sizes[node], 1000) for node in self.graph.nodes()]
+        # Define node sizes based on node type
+        node_sizes = []
+        for node in self.graph.nodes():
+            node_type = self.graph.nodes[node].get("type", "unknown")
+            if node_type == "ip":
+                node_sizes.append(800)  # Larger for IPs
+            elif node_type == "domain":
+                node_sizes.append(700)  # Medium for domains
             else:
-                # Calculate based on centrality with much larger base size
-                centrality = nx.betweenness_centrality(self.graph)
-                # Minimum size of 1000, scaling up to 3000 based on centrality
-                node_sizes = [1000 + 2000 * (centrality[node] + 0.1) for node in self.graph.nodes()]
-        except Exception:
-            # Fallback to fixed large size
-            node_sizes = [1200] * self.graph.number_of_nodes()
+                node_sizes.append(500)  # Default size
         
-        # Define edge colors based on type - brighter for dark theme
-        edge_colors = []
-        for u, v, data in self.graph.edges(data=True):
-            edge_type = data.get("type", "")
-            if edge_type.upper() in ["HTTP", "HTTPS"]:
-                edge_colors.append("#69f0ae")  # Brighter green for HTTP/HTTPS
-            elif edge_type.upper() in ["DNS"]:
-                edge_colors.append("#ea80fc")  # Brighter purple for DNS
-            elif edge_type.upper() in ["SSH", "SFTP", "SCP"]:
-                edge_colors.append("#ffab40")  # Brighter orange for secure protocols
-            else:
-                edge_colors.append("#e0e0e0")  # Lighter grey
+        # Apply zoom level to positions
+        zoomed_pos = {}
+        center_x = sum(x for x, y in pos.values()) / len(pos)
+        center_y = sum(y for x, y in pos.values()) / len(pos)
         
-        # Draw the graph with highly visible, glossy edges
+        for node, (x, y) in pos.items():
+            # Scale positions relative to center based on zoom level
+            scaled_x = center_x + (x - center_x) * self.zoom_level
+            scaled_y = center_y + (y - center_y) * self.zoom_level
+            zoomed_pos[node] = (scaled_x, scaled_y)
+        
+        # Draw the edges with nice styling
         nx.draw_networkx_edges(
-            self.graph, pos, 
-            width=3.5,  # Even thicker edges for maximum visibility
-            alpha=1.0,  # Full opacity
-            edge_color=edge_colors,
-            connectionstyle="arc3,rad=0.15",  # More curved edges for better visibility
+            self.graph, zoomed_pos, 
+            width=2.0,
+            alpha=0.7,
+            edge_color='#e0e0e0',
             arrows=True,
-            arrowstyle='-|>',  # Better arrow style
-            arrowsize=30,  # Much larger arrows for better visibility
-            node_size=node_sizes,  # Pass node sizes to fix arrow positions
-            ax=ax,
-            min_source_margin=18,  # Increased margin from source node
-            min_target_margin=18   # Increased margin from target node
+            arrowstyle='-|>',
+            arrowsize=15,
+            connectionstyle="arc3,rad=0.1"
         )
         
-        # Draw nodes with enhanced visibility
+        # Draw nodes
         nodes = nx.draw_networkx_nodes(
-            self.graph, pos,
+            self.graph, zoomed_pos,
             node_color=node_colors,
             node_size=node_sizes,
-            alpha=0.95,  # Nearly fully opaque
-            edgecolors='white',  # White borders
-            linewidths=2.0,  # Thicker borders for better definition
-            ax=ax
+            alpha=0.9,
+            edgecolors='white',
+            linewidths=1.5
         )
         
         # Enable node picking (clicking)
-        nodes.set_picker(15)  # Even larger picking radius for better interaction
+        nodes.set_picker(10)
         
-        # Draw labels with high contrast white text for dark background
+        # Draw labels with improved visibility
         nx.draw_networkx_labels(
-            self.graph, pos,
-            font_size=11,  # Larger font for better readability
+            self.graph, zoomed_pos,
+            font_size=10,
             font_weight='bold',
-            font_color='white',  # White text for dark background
-            ax=ax,
-            bbox=dict(facecolor='#303030', edgecolor='none', alpha=0.7, pad=2)  # Background for better text contrast
+            font_color='white'
         )
         
-        # Highlight selected node if any with enhanced glow effect
+        # Highlight selected node if any with enhanced styling
         if self.selected_node:
             node_id = self.selected_node["id"]
             if node_id in self.graph.nodes:
                 # Draw outer glow
                 nx.draw_networkx_nodes(
-                    self.graph, pos,
-                    nodelist=[node_id],
-                    node_color='white',
-                    node_size=node_sizes[list(self.graph.nodes).index(node_id)] * 1.5,
-                    alpha=0.2,
-                    edgecolors='#ffffff',
-                    linewidths=6.0,
-                    ax=ax
-                )
-                
-                # Draw inner highlight
-                nx.draw_networkx_nodes(
-                    self.graph, pos,
+                    self.graph, zoomed_pos,
                     nodelist=[node_id],
                     node_color='white',
                     node_size=node_sizes[list(self.graph.nodes).index(node_id)] * 1.3,
                     alpha=0.3,
-                    edgecolors='#e0e0e0',
-                    linewidths=3.0,
-                    ax=ax
+                    edgecolors='#ffffff',
+                    linewidths=3.0
                 )
         
         # Turn off axis
         ax.set_axis_off()
         
-        # Adjust layout safely
-        safe_tight_layout(self.fig, pad=0.5)
+        # Adjust layout
+        self.fig.tight_layout(pad=0)
         
         # Draw canvas
         self.canvas.draw()
@@ -1042,33 +1129,28 @@ class NetworkGraph(QWidget):
         Args:
             event: Click event
         """
-        # Check if this is a proper pick event with artists
-        if not hasattr(event, 'artist'):
+        # Start drag operation on right button
+        if event.button == 3:  # Right mouse button
+            self._drag_in_progress = True
+            self._drag_start = (event.xdata, event.ydata)
             return
-            
-        # Check if a node was clicked
-        if event.artist and hasattr(event.artist, 'get_offsets'):
-            # Make sure the event has an ind attribute
-            if not hasattr(event, 'ind') or len(event.ind) == 0:
-                return
+        
+        # For left button clicks, handle pick event
+        if hasattr(event, 'artist'):
+            if event.artist and hasattr(event, 'ind') and len(event.ind) > 0:
+                # Get the index of the selected node
+                ind = event.ind[0]
                 
-            # Get the index of the selected node
-            ind = event.ind[0]
-            
-            # Safety check for node list
-            if not self.graph or not self.graph.nodes or ind >= len(list(self.graph.nodes)):
-                return
-            
-            # Get node id
-            node_id = list(self.graph.nodes)[ind]
-            
-            # Find node data
-            for node in self.nodes:
-                if node["id"] == node_id:
-                    self.selected_node = node
-                    self.node_selected.emit(node)
-                    self._draw_graph()  # Redraw with highlight
-                    break
+                # Get node id
+                node_id = list(self.graph.nodes())[ind]
+                
+                # Find node data
+                for node in self.nodes:
+                    if node["id"] == node_id:
+                        self.selected_node = node
+                        self.node_selected.emit(node)
+                        self._draw_graph(preserve_layout=True)  # Redraw with highlight
+                        break
 
 
 class ChartWidget(QWidget):
@@ -1094,7 +1176,9 @@ class ChartWidget(QWidget):
         self.title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         font = QFont()
         font.setBold(True)
+        font.setPointSize(12)
         self.title_label.setFont(font)
+        self.title_label.setStyleSheet("color: #ffffff;")
         layout.addWidget(self.title_label)
         
         # Create chart based on type

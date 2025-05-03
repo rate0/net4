@@ -20,6 +20,12 @@ matplotlib.use('Agg')
 from ...models.session import Session
 from ...utils.logger import Logger
 from ...utils.config import Config
+from .pdf_helpers import (
+    add_header_footer, create_title_page, create_net4_styles,
+    create_table_style, create_section, create_info_box,
+    create_chart_pie, create_chart_bar, create_metric_grid,
+    matplotlib_to_image, NET4_COLORS
+)
 
 
 class ReportGenerator:
@@ -68,39 +74,22 @@ class ReportGenerator:
             ]
         
         try:
-            # Create PDF document
+            # Create PDF document with custom header/footer
             buffer = io.BytesIO()
-            doc = SimpleDocTemplate(buffer, pagesize=letter,
-                                  rightMargin=0.5*inch, leftMargin=0.5*inch,
-                                  topMargin=0.5*inch, bottomMargin=0.5*inch)
+            doc = SimpleDocTemplate(
+                buffer, 
+                pagesize=letter,
+                rightMargin=0.5*inch,
+                leftMargin=0.5*inch,
+                topMargin=0.75*inch,  # Increased top margin for header
+                bottomMargin=0.75*inch  # Increased bottom margin for footer
+            )
             
-            # Get styles - FIX: Instead of adding styles that might conflict,
-            # modify existing styles or create styles with unique names
-            styles = getSampleStyleSheet()
+            # Use the enhanced theme styles from pdf_helpers module
+            styles = create_net4_styles()
             
-            # Modify existing styles instead of adding new ones
-            styles['Heading1'].fontName = 'Helvetica-Bold'
-            styles['Heading1'].fontSize = 16
-            styles['Heading1'].spaceAfter = 12
-            
-            styles['Heading2'].fontName = 'Helvetica-Bold'
-            styles['Heading2'].fontSize = 14
-            styles['Heading2'].spaceAfter = 10
-            
-            styles['Heading3'].fontName = 'Helvetica-Bold'
-            styles['Heading3'].fontSize = 12
-            styles['Heading3'].spaceAfter = 8
-            
-            styles['Normal'].fontName = 'Helvetica'
-            styles['Normal'].fontSize = 10
-            styles['Normal'].spaceAfter = 6
-            
-            # Add only styles that don't exist in the default stylesheet
-            if 'Code' not in styles:
-                styles.add(ParagraphStyle(name='Code',
-                                        fontName='Courier',
-                                        fontSize=9,
-                                        spaceAfter=6))
+            # Get theme from config
+            theme = self.config.get("reporting.theme", "corporate")
             
             # Story (elements to add to document)
             story = []
@@ -169,11 +158,25 @@ class ReportGenerator:
                 self._add_timeline(story, session, styles)
                 story.append(PageBreak())
             
-            # Build document
+            # Build document with custom header and footer
             if progress_callback:
                 progress_callback("Building PDF document", 0.85)
             
-            doc.build(story)
+            # Get logo path and report title
+            logo_path = self.config.get("reporting.logo_path")
+            if logo_path and not os.path.isabs(logo_path):
+                # Resolve relative path
+                logo_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+                                      os.path.dirname(__file__)))), logo_path)
+            
+            report_title = "Network Forensic Analysis Report"
+            
+            # Build document with custom header/footer
+            doc.build(
+                story,
+                onFirstPage=lambda canvas, doc: add_header_footer(canvas, doc, report_title, logo_path),
+                onLaterPages=lambda canvas, doc: add_header_footer(canvas, doc, report_title, logo_path)
+            )
             
             # Save to file
             with open(output_path, 'wb') as f:
@@ -605,17 +608,13 @@ class ReportGenerator:
             session: Analysis session
             styles: Document styles
         """
-        # Company logo
+        # Get logo path and ensure it's resolved correctly
         logo_path = self.config.get("reporting.logo_path")
-        if logo_path and os.path.exists(logo_path):
-            img = Image(logo_path, width=2*inch, height=1*inch)
-            story.append(img)
-            story.append(Spacer(1, 0.5*inch))
-        
-        # Report title
-        title = Paragraph("Network Forensic Analysis Report", styles["Heading1"])
-        story.append(title)
-        story.append(Spacer(1, 0.5*inch))
+        if logo_path:
+            # Handle relative paths by making them absolute
+            if not os.path.isabs(logo_path):
+                logo_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+                                        os.path.dirname(__file__)))), logo_path)
         
         # Session info with null checks
         session_name = getattr(session, 'name', 'Unknown Session')
@@ -635,64 +634,21 @@ class ReportGenerator:
         if analyst_name:
             session_info.append(["Analyst:", analyst_name])
         
-        # Create table
-        info_table = Table(session_info, colWidths=[1.5*inch, 4*inch])
-        info_table.setStyle(TableStyle([
-            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
-            ('FONTNAME', (1, 0), (1, -1), 'Helvetica'),
-            ('FONTSIZE', (0, 0), (-1, -1), 10),
-            ('TOPPADDING', (0, 0), (-1, -1), 6),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-            ('ALIGN', (0, 0), (0, -1), 'RIGHT'),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ]))
-        
-        story.append(info_table)
-        story.append(Spacer(1, 1*inch))
-        
-        # Files analyzed with null checks
-        story.append(Paragraph("Files Analyzed:", styles["Heading3"]))
-        story.append(Spacer(1, 0.1*inch))
-        
-        file_data = [["Filename", "Type", "Size"]]
-        
+        # Add information about analyzed files
         files = getattr(session, 'files', {}) or {}
-        for file_id, file_info in files.items():
-            if not isinstance(file_info, dict):
-                continue
-                
-            file_name = file_info.get("name", "Unknown")
-            file_type = file_info.get("type", "Unknown")
-            file_size = "Unknown"
-            
-            # Safely get file size
-            metadata = file_info.get("metadata", {})
-            if isinstance(metadata, dict) and "size" in metadata:
-                size_value = metadata["size"]
-                if isinstance(size_value, int):
-                    file_size = self._format_bytes(size_value)
-                else:
-                    file_size = str(size_value)
-            
-            file_data.append([file_name, file_type, file_size])
+        file_count = len(files)
+        if file_count > 0:
+            session_info.append(["Files Analyzed:", str(file_count)])
         
-        if len(file_data) > 1:
-            file_table = Table(file_data, colWidths=[3*inch, 1*inch, 1*inch])
-            file_table.setStyle(TableStyle([
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-                ('FONTSIZE', (0, 0), (-1, -1), 9),
-                ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-                ('TOPPADDING', (0, 0), (-1, -1), 4),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-                ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
-                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ]))
-            
-            story.append(file_table)
-        else:
-            story.append(Paragraph("No files analyzed.", styles["Normal"]))
+        # Use the enhanced title page creation function
+        subtitle = f"Analysis Session: {session_name}"
+        create_title_page(
+            story, 
+            title="Network Forensic Analysis Report", 
+            subtitle=subtitle,
+            logo_path=logo_path,
+            session_info=session_info
+        )
     
     def _add_table_of_contents(
         self, 

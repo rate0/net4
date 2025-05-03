@@ -499,7 +499,7 @@ class OverviewDashboard(QWidget):
         ip_chart_layout.addWidget(ip_chart_title)
         
         # Create a much larger pie chart
-        self.ip_chart = PieChart("", height=250)  # Removed title as we use a styled QLabel above
+        self.ip_chart = PieChart("", height=350)  # Removed title as we use a styled QLabel above
         ip_chart_layout.addWidget(self.ip_chart)
         
         charts_layout.addWidget(ip_chart_container)
@@ -524,7 +524,7 @@ class OverviewDashboard(QWidget):
         domain_chart_layout.addWidget(domain_chart_title)
         
         # Create a much larger pie chart
-        self.domain_chart = PieChart("", height=250)  # Removed title as we use a styled QLabel above
+        self.domain_chart = PieChart("", height=350)  # Removed title as we use a styled QLabel above
         domain_chart_layout.addWidget(self.domain_chart)
         
         charts_layout.addWidget(domain_chart_container)
@@ -727,7 +727,7 @@ class OverviewDashboard(QWidget):
         """)
         time_chart_layout = QVBoxLayout(time_chart_container)
         
-        self.time_chart = TimeSeriesChart("", height=250)  # Removed title as we use a styled QLabel above
+        self.time_chart = TimeSeriesChart("", height=350)  # Removed title as we use a styled QLabel above
         time_chart_layout.addWidget(self.time_chart)
         
         time_layout.addWidget(time_chart_container)
@@ -785,7 +785,7 @@ class OverviewDashboard(QWidget):
         protocol_chart_title.setStyleSheet("color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 5px;")
         protocol_chart_layout.addWidget(protocol_chart_title)
         
-        self.protocol_chart = PieChart("", height=250)  # Removed title as we use a styled QLabel above
+        self.protocol_chart = PieChart("", height=350)  # Removed title as we use a styled QLabel above
         protocol_chart_layout.addWidget(self.protocol_chart)
         
         charts_layout.addWidget(protocol_chart_container)
@@ -809,7 +809,7 @@ class OverviewDashboard(QWidget):
         port_chart_title.setStyleSheet("color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 5px;")
         port_chart_layout.addWidget(port_chart_title)
         
-        self.port_chart = BarChart("", height=250)  # Removed title as we use a styled QLabel above
+        self.port_chart = BarChart("", height=350)  # Removed title as we use a styled QLabel above
         port_chart_layout.addWidget(self.port_chart)
         
         charts_layout.addWidget(port_chart_container)
@@ -1087,7 +1087,7 @@ class OverviewDashboard(QWidget):
         threat_chart_layout.addWidget(threat_chart_title)
         
         # Create a much larger pie chart
-        self.threat_chart = PieChart("", height=250)  # Removed title as we use a styled QLabel above
+        self.threat_chart = PieChart("", height=350)  # Removed title as we use a styled QLabel above
         threat_chart_layout.addWidget(self.threat_chart)
         
         charts_layout.addWidget(threat_chart_container)
@@ -1112,7 +1112,7 @@ class OverviewDashboard(QWidget):
         threat_type_chart_layout.addWidget(threat_type_chart_title)
         
         # Create a larger bar chart
-        self.threat_type_chart = BarChart("", height=250)  # Removed title as we use a styled QLabel above
+        self.threat_type_chart = BarChart("", height=350)  # Removed title as we use a styled QLabel above
         threat_type_chart_layout.addWidget(self.threat_type_chart)
         
         charts_layout.addWidget(threat_type_chart_container)

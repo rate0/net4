@@ -4,7 +4,7 @@ from typing import List, Dict, Any, Optional
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QLabel, 
     QTextEdit, QPushButton, QLineEdit, QGroupBox, QScrollArea,
-    QFrame, QSizePolicy, QTextBrowser
+    QFrame, QSizePolicy, QTextBrowser, QGridLayout
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QSize, QTimer
 from PyQt6.QtGui import QFont, QColor, QPalette, QTextCursor, QIcon
@@ -13,7 +13,7 @@ from ...models.session import Session
 
 
 class ChatMessageWidget(QFrame):
-    """Widget to display a single chat message"""
+    """Widget to display a single chat message in a modern chat interface style"""
     
     def __init__(self, message: Dict[str, Any], is_user: bool = False, parent=None):
         """
@@ -26,51 +26,95 @@ class ChatMessageWidget(QFrame):
         """
         super().__init__(parent)
         
-        self.setFrameShape(QFrame.Shape.StyledPanel)
-        self.setFrameShadow(QFrame.Shadow.Raised)
+        # Configure frame appearance
+        self.setFrameShape(QFrame.Shape.NoFrame)  # Remove frame border
         self.setAutoFillBackground(True)
         
-        # Set background color based on message type - using more subtle colors
-        palette = self.palette()
+        # Modern styling for message bubbles
         if is_user:
-            palette.setColor(QPalette.ColorRole.Window, QColor("#f0f0f0"))  # Light gray for user
+            # User messages aligned right with accent color
+            self.setStyleSheet("""
+                QFrame {
+                    background-color: #2d74da;
+                    border-radius: 18px;
+                    border-top-right-radius: 4px;
+                    margin-left: 50px;
+                }
+            """)
         else:
-            palette.setColor(QPalette.ColorRole.Window, QColor("#f8f8f8"))  # Very light gray for AI
-        self.setPalette(palette)
+            # AI messages aligned left with darker background
+            self.setStyleSheet("""
+                QFrame {
+                    background-color: #323242;
+                    border-radius: 18px;
+                    border-top-left-radius: 4px;
+                    margin-right: 50px;
+                }
+            """)
         
         # Create layout
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setContentsMargins(15, 12, 15, 12)
+        layout.setSpacing(6)
         
-        # Add header (timestamp + sender)
+        # Create a row for the avatar and sender info
         header_layout = QHBoxLayout()
+        header_layout.setContentsMargins(0, 0, 0, 5)
         
-        # Sender name
-        sender_label = QLabel("You:" if is_user else "AI Assistant:")
-        sender_label.setStyleSheet("font-weight: bold;")
+        # Icon/Avatar for the sender
+        icon_label = QLabel()
+        icon_size = 24
+        if is_user:
+            avatar_icon = QIcon("assets/icons/user.png")
+            if avatar_icon.isNull():
+                # Default if icon not available
+                icon_label.setText("👤")
+                icon_label.setStyleSheet("color: white; font-size: 14px;")
+            else:
+                pixmap = avatar_icon.pixmap(QSize(icon_size, icon_size))
+                icon_label.setPixmap(pixmap)
+        else:
+            avatar_icon = QIcon("assets/icons/ai.png")
+            if avatar_icon.isNull():
+                # Default if icon not available
+                icon_label.setText("🤖")
+                icon_label.setStyleSheet("color: white; font-size: 14px;")
+            else:
+                pixmap = avatar_icon.pixmap(QSize(icon_size, icon_size))
+                icon_label.setPixmap(pixmap)
+        
+        header_layout.addWidget(icon_label)
+        
+        # Sender name with modern styling
+        sender_label = QLabel("You" if is_user else "AI Assistant")
+        sender_label.setStyleSheet(f"color: {'white' if is_user else '#e0e0e0'}; font-weight: bold;")
         header_layout.addWidget(sender_label)
+        header_layout.addStretch()
         
-        # Timestamp
+        # Timestamp with subtle styling
         timestamp = datetime.fromisoformat(message.get("timestamp", datetime.now().isoformat()))
-        timestamp_str = timestamp.strftime("%Y-%m-%d %H:%M:%S")
+        timestamp_str = timestamp.strftime("%H:%M")  # Simpler time format like modern chat apps
         timestamp_label = QLabel(timestamp_str)
-        timestamp_label.setStyleSheet("color: gray;")
-        timestamp_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+        timestamp_label.setStyleSheet(f"color: {'rgba(255,255,255,0.7)' if is_user else 'rgba(224,224,224,0.7)'}; font-size: 10px;")
         header_layout.addWidget(timestamp_label)
         
         layout.addLayout(header_layout)
         
-        # Add content
+        # Add message content with modern styling
         content_text = QTextBrowser()
         content_text.setOpenExternalLinks(True)
         content_text.setReadOnly(True)
+        content_text.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         
-        # Style the text area
-        content_text.setStyleSheet("""
-            QTextBrowser {
+        # Style the text area to match the bubble
+        content_text.setStyleSheet(f"""
+            QTextBrowser {{
                 border: none;
                 background-color: transparent;
-            }
+                color: {'white' if is_user else '#ffffff'};
+                font-size: 13px;
+                line-height: 1.4;
+            }}
         """)
         
         # Get message content
@@ -82,21 +126,28 @@ class ChatMessageWidget(QFrame):
         # Set the document contents
         content_text.setMarkdown(content)
         
-        # Adjust height to content
+        # Adjust height to content dynamically
         content_text.document().adjustSize()
-        content_height = int(content_text.document().size().height() + 20)
-        content_text.setMinimumHeight(min(50, content_height))
-        content_text.setMaximumHeight(min(300, content_height))
+        content_height = int(content_text.document().size().height() + 30)
+        content_text.setMinimumHeight(min(60, content_height))
+        
+        # Allow the content to expand more for AI responses
+        if is_user:
+            content_text.setMaximumHeight(min(300, content_height))
+        else:
+            content_text.setMaximumHeight(min(500, content_height))
         
         layout.addWidget(content_text)
         
-        # Set maximum width based on parent
+        # Set width constraints based on parent (chat bubble style)
         if parent:
-            self.setMaximumWidth(int(parent.width() * 0.95))
+            max_width = int(parent.width() * 0.85)
+            self.setMinimumWidth(200)
+            self.setMaximumWidth(max_width)
 
 
 class ChatHistoryWidget(QScrollArea):
-    """Widget to display chat history"""
+    """Widget to display chat history in a modern chat interface style"""
     
     def __init__(self, parent=None):
         """
@@ -107,17 +158,46 @@ class ChatHistoryWidget(QScrollArea):
         """
         super().__init__(parent)
         
-        # Create container widget
+        # Create container widget with modern styling
         self.container = QWidget()
+        self.container.setObjectName("chatContainer")
         self.container_layout = QVBoxLayout(self.container)
         self.container_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-        self.container_layout.setSpacing(10)
-        self.container_layout.setContentsMargins(10, 10, 10, 10)
+        self.container_layout.setSpacing(16)  # More space between messages
+        self.container_layout.setContentsMargins(15, 20, 15, 20)
         
-        # Set scroll area properties
+        # Set scroll area properties with modern styling
         self.setWidget(self.container)
         self.setWidgetResizable(True)
         self.setMinimumWidth(400)
+        self.setFrameShape(QFrame.Shape.NoFrame)  # Remove frame border
+        
+        # Clean modern scrollbar styling
+        self.setStyleSheet("""
+            QScrollArea {
+                background-color: #1e1e2e;
+                border: none;
+            }
+            QScrollBar:vertical {
+                background-color: #282838;
+                width: 10px;
+                margin: 0px;
+            }
+            QScrollBar::handle:vertical {
+                background-color: #414558;
+                min-height: 20px;
+                border-radius: 5px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background-color: #5a6988;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0px;
+            }
+            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+                background-color: transparent;
+            }
+        """)
         
         # Store messages
         self.messages = []
@@ -329,44 +409,137 @@ class AIInsightsDashboard(QWidget):
         self.chat_history = ChatHistoryWidget()
         chat_layout.addWidget(self.chat_history)
         
-        # Question input area
-        input_layout = QHBoxLayout()
+        # Question input area with modern styling
+        input_frame = QFrame()
+        input_frame.setObjectName("chatInputFrame")
+        input_frame.setStyleSheet("""
+            #chatInputFrame {
+                background-color: #323242;
+                border-radius: 20px;
+                border: 1px solid #414558;
+            }
+        """)
         
+        input_layout = QHBoxLayout(input_frame)
+        input_layout.setContentsMargins(15, 5, 5, 5)
+        input_layout.setSpacing(10)
+        
+        # Modern styled input field
         self.question_input = QLineEdit()
         self.question_input.setPlaceholderText("Ask a question about your network data...")
         self.question_input.returnPressed.connect(self._ask_question)
+        self.question_input.setStyleSheet("""
+            QLineEdit {
+                background-color: transparent;
+                color: white;
+                border: none;
+                padding: 10px 0px;
+                font-size: 13px;
+                selection-background-color: #2d74da;
+            }
+        """)
         input_layout.addWidget(self.question_input)
         
-        self.ask_button = QPushButton("Ask")
+        # Modern styled send button
+        self.ask_button = QPushButton()
+        self.ask_button.setIcon(QIcon("assets/icons/send.png"))
+        if self.ask_button.icon().isNull():
+            self.ask_button.setText("Send")
+        else:
+            self.ask_button.setToolTip("Send message")
+        
         self.ask_button.clicked.connect(self._ask_question)
+        self.ask_button.setStyleSheet("""
+            QPushButton {
+                background-color: #2d74da;
+                color: white;
+                border-radius: 18px;
+                min-width: 36px;
+                min-height: 36px;
+                padding: 6px;
+            }
+            QPushButton:hover {
+                background-color: #3a82f7;
+            }
+            QPushButton:pressed {
+                background-color: #2361b8;
+            }
+        """)
+        
         input_layout.addWidget(self.ask_button)
+        chat_layout.addWidget(input_frame)
         
-        chat_layout.addLayout(input_layout)
+        # Suggested questions with modern chip-style buttons
+        suggested_frame = QFrame()
+        suggested_frame.setObjectName("suggestedQuestionsFrame")
+        suggested_frame.setStyleSheet("""
+            #suggestedQuestionsFrame {
+                background-color: #282838;
+                border-radius: 8px;
+                border: 1px solid #414558;
+                margin-top: 10px;
+                padding: 5px;
+            }
+        """)
+        suggested_layout = QVBoxLayout(suggested_frame)
+        suggested_layout.setContentsMargins(10, 12, 10, 12)
+        suggested_layout.setSpacing(12)
         
-        # Suggested questions
-        suggested_questions_group = QGroupBox("Suggested Questions")
-        suggested_layout = QVBoxLayout(suggested_questions_group)
+        # Title for suggested questions
+        suggested_title = QLabel("Suggested Questions")
+        suggested_title.setStyleSheet("color: #94a3b8; font-weight: bold; font-size: 12px;")
+        suggested_layout.addWidget(suggested_title)
+        
+        # Grid layout for question chips
+        questions_grid = QGridLayout()
+        questions_grid.setHorizontalSpacing(10)
+        questions_grid.setVerticalSpacing(8)
         
         suggested_questions = [
-            "What are the most suspicious entities in this session?",
-            "Summarize the network traffic patterns",
-            "Are there any potential data exfiltration attempts?",
-            "What unusual communication patterns are present?",
-            "Which IP addresses should I investigate further?"
+            "What are the most suspicious entities?",
+            "Summarize traffic patterns",
+            "Any data exfiltration attempts?",
+            "Unusual communication patterns?",
+            "Which IPs to investigate?",
+            "What ports are suspicious?"
         ]
         
-        for question in suggested_questions:
+        # Create chip-style buttons in a grid
+        for i, question in enumerate(suggested_questions):
+            row = i // 2
+            col = i % 2
+            
             question_button = QPushButton(question)
+            question_button.setCursor(Qt.CursorShape.PointingHandCursor)
             question_button.clicked.connect(lambda checked=False, q=question: self.set_question(q))
-            suggested_layout.addWidget(question_button)
+            question_button.setStyleSheet("""
+                QPushButton {
+                    background-color: #323242;
+                    color: #e0e0e0;
+                    border-radius: 15px;
+                    border: 1px solid #414558;
+                    padding: 8px 12px;
+                    text-align: center;
+                    font-size: 12px;
+                }
+                QPushButton:hover {
+                    background-color: #414558;
+                    border-color: #5a6988;
+                }
+                QPushButton:pressed {
+                    background-color: #2d74da;
+                }
+            """)
+            questions_grid.addWidget(question_button, row, col)
         
-        chat_layout.addWidget(suggested_questions_group)
+        suggested_layout.addLayout(questions_grid)
+        chat_layout.addWidget(suggested_frame)
         
         # Add to splitter
         splitter.addWidget(chat_container)
         
         # Set initial sizes (30% summary, 70% chat)
-        splitter.setSizes([300, 700])
+        splitter.setSizes([400, 600])
         
         main_layout.addWidget(splitter)
         

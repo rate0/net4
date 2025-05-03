@@ -119,7 +119,7 @@ class NetworkFlowDashboard(QWidget):
              "Protocol", "Packets", "Bytes", "First Seen", "Last Seen"],
             self.get_connections_data()
         )
-        self.connection_table.setMinimumHeight(200)
+        self.connection_table.setMinimumHeight(250)
         self.connection_table.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.connection_table.table.selectionModel().selectionChanged.connect(self._connection_selected)
         
@@ -180,7 +180,7 @@ class NetworkFlowDashboard(QWidget):
         self.timeline_group.setVisible(False)  # Hide until a connection is selected
         self.timeline_layout = QVBoxLayout(self.timeline_group)
         
-        self.timeline_chart = TimeSeriesChart("Packet Timeline", height=150)
+        self.timeline_chart = TimeSeriesChart("Packet Timeline", height=500)
         self.timeline_layout.addWidget(self.timeline_chart)
         
         self.detail_layout.addWidget(self.timeline_group)
@@ -203,6 +203,7 @@ class NetworkFlowDashboard(QWidget):
         content_splitter.addWidget(self.detail_panel)
         
         # Set initial splitter sizes
+        # More balanced initial split sizes
         content_splitter.setSizes([600, 400])
         
         # Add content splitter to layout

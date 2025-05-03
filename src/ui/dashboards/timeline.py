@@ -76,8 +76,8 @@ class TimelineView(QWidget):
         self.event_margin = 2
         self.event_min_width = 50
         
-        # Initialize widget
-        self.setMinimumHeight(150)
+        # Initialize widget with larger minimum height
+        self.setMinimumHeight(300)
         self.setMouseTracking(True)
         
         # Set color scheme
@@ -323,7 +323,7 @@ class TimelineView(QWidget):
         # Set up event drawing
         content_height = height - self.header_height
         
-        # Ensure we don't divide by zero - FIXED: added max(1, self.num_lanes) 
+        # Ensure we don't divide by zero - we always have at least one lane
         lane_height = min(self.lane_height, int(content_height / max(1, self.num_lanes)))
         
         # Ensure lane_height is at least 1 pixel
@@ -859,7 +859,7 @@ class TimelineDashboard(QWidget):
         content_splitter.addWidget(self.details_group)
         
         # Set initial splitter sizes
-        content_splitter.setSizes([300, 300, 200])
+        content_splitter.setSizes([500, 300, 200])
         
         # Add content splitter to layout
         layout.addWidget(content_splitter)

@@ -41,6 +41,7 @@ analysis:
   max_connections: 5000  # Maximum number of connections to track
   enable_ai: true  # Enable AI analysis features
   enable_threat_intel: true  # Enable threat intelligence lookups
+  enable_custom_rules: true  # Enable custom rule evaluation
 
 # Rules
 rules:
@@ -52,3 +53,17 @@ rules:
 dashboards:
   default: "overview"  # Default dashboard to show on startup
   refresh_interval: 30  # Auto-refresh interval in seconds
+  http_analysis:
+    max_display_packets: 1000  # Maximum number of HTTP packets to display
+    show_request_headers: true  # Show request headers in detail view
+    show_response_headers: true  # Show response headers in detail view
+    truncate_body_length: 10000  # Truncate bodies larger than this size
+
+# Reporting Settings
+reporting:
+  company_name: "Net4 Security"
+  analyst_name: "Security Analyst"
+  logo_path: "assets/report/net4_logo.png"
+  default_export_format: "pdf"
+  include_session_metadata: true
+  theme: "corporate"  # corporate, modern, cyber

@@ -17,10 +17,12 @@ from .dashboards.overview import OverviewDashboard
 from .dashboards.network_flow import NetworkFlowDashboard
 from .dashboards.event_analysis import EventAnalysisDashboard
 from .dashboards.ai_insights import AIInsightsDashboard
+from .dashboards.http_analysis import HttpAnalysisDashboard
 from .widgets.global_search import GlobalSearchWidget
 from .dialogs.settings import SettingsDialog
 from .dialogs.export import ExportDialog
 from .dialogs.rules_manager import RuleManagerDialog
+from .dialogs.live_capture import LiveCaptureDialog
 
 from ..models.session import Session
 from ..core.data_ingestion.pcap import PcapProcessor
@@ -164,6 +166,8 @@ class MainWindow(QMainWindow):
         # Set window properties
         self.setWindowTitle("Net4 - Network Forensic Analysis")
         self.resize(1200, 800)
+        # Allow window to be resized normally
+        self.setMinimumSize(800, 600)
         
         # Load and apply the dark theme stylesheet
         try:
@@ -178,7 +182,7 @@ class MainWindow(QMainWindow):
             self.setStyleSheet("""
             QWidget { background-color: #1e1e2e; color: #ffffff; }
             QPushButton { background-color: #2d74da; color: #ffffff; padding: 5px; }
-            QTabBar::tab { background-color: #2e2e3e; color: #909090; padding: 8px 16px; }
+            QTabBar::tab { background-color: #2e2e3e; color: #ffffff; padding: 8px 16px; }
             QTabBar::tab:selected { background-color: #2d74da; color: #ffffff; }
             """)
         
@@ -207,6 +211,10 @@ class MainWindow(QMainWindow):
         
         # Load window state
         self._load_window_state()
+        
+        # Ensure window is resizable and has appropriate flags
+        self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowMaximizeButtonHint)
+        self.setWindowState(self.windowState() & ~Qt.WindowState.WindowFullScreen)
     
     def _create_menu(self):
         """Create application menu"""
@@ -239,6 +247,12 @@ class MainWindow(QMainWindow):
         import_log_action = QAction("Import &Log File", self)
         import_log_action.triggered.connect(self._import_log)
         import_menu.addAction(import_log_action)
+        
+        import_menu.addSeparator()
+        
+        capture_live_action = QAction("&Live Capture", self)
+        capture_live_action.triggered.connect(self._start_live_capture)
+        import_menu.addAction(capture_live_action)
         
         export_action = QAction(QIcon.fromTheme("document-save-as"), "&Export Data", self)
         export_action.triggered.connect(self._export_data)
@@ -296,6 +310,14 @@ class MainWindow(QMainWindow):
         settings_action.triggered.connect(self._open_settings)
         tools_menu.addAction(settings_action)
         
+        tools_menu.addSeparator()
+        
+        # HTTP/HTTPS support is now enabled by default during installation
+        check_http_support_action = QAction("Check HTTP/HTTPS Support", self)
+        check_http_support_action.triggered.connect(self._check_http_support)
+        check_http_support_action.setToolTip("Check and verify HTTP/HTTPS packet analysis support")
+        tools_menu.addAction(check_http_support_action)
+        
         # View menu
         view_menu = self.menuBar().addMenu("&View")
         
@@ -314,7 +336,8 @@ class MainWindow(QMainWindow):
         """Create application toolbar with essential actions only"""
         main_toolbar = QToolBar("Main Toolbar", self)
         main_toolbar.setObjectName("mainToolbar")  # Set object name to avoid Qt warning
-        main_toolbar.setIconSize(QSize(24, 24))
+        main_toolbar.setIconSize(QSize(32, 32))    # Larger icons for better visibility
+        main_toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)  # Show text under icons
         self.addToolBar(main_toolbar)
         
         # File actions group
@@ -337,6 +360,12 @@ class MainWindow(QMainWindow):
         import_pcap_action.triggered.connect(self._import_pcap)
         import_pcap_action.setToolTip("Import PCAP file for analysis")
         main_toolbar.addAction(import_pcap_action)
+        
+        # Live capture action - text only since we don't have a good icon
+        live_capture_action = QAction("Live Capture", self)
+        live_capture_action.triggered.connect(self._start_live_capture)
+        live_capture_action.setToolTip("Capture live network traffic (requires admin privileges)")
+        main_toolbar.addAction(live_capture_action)
         
         main_toolbar.addSeparator()
         
@@ -432,9 +461,9 @@ class MainWindow(QMainWindow):
         # Create new session
         self.session = Session()
         
-        # Initialize core components with TShark path from config
-        tshark_path = self.config.get("paths.tshark", "")
-        self.pcap_processor = PcapProcessor(self.session, tshark_path=tshark_path)
+        # Initialize core components
+        debug_mode = self.config.get("debug", False)
+        self.pcap_processor = PcapProcessor(self.session, debug=debug_mode)
         self.log_parser = LogParser(self.session)
         
         # Create dashboards
@@ -475,9 +504,9 @@ class MainWindow(QMainWindow):
             # Load session
             self.session = Session.load(file_path)
             
-            # Initialize core components with TShark path from config
-            tshark_path = self.config.get("paths.tshark", "")
-            self.pcap_processor = PcapProcessor(self.session, tshark_path=tshark_path)
+            # Initialize core components with debug mode from config
+            debug_mode = self.config.get("debug", False)
+            self.pcap_processor = PcapProcessor(self.session, debug=debug_mode)
             self.log_parser = LogParser(self.session)
             
             # Create dashboards
@@ -785,6 +814,73 @@ class MainWindow(QMainWindow):
         # Open export dialog
         dialog = ExportDialog(self.session, self)
         dialog.exec()
+        
+    def _start_live_capture(self):
+        """Start live packet capture"""
+        if not self.session:
+            QMessageBox.warning(
+                self, "No Active Session",
+                "Please create or open a session before starting live capture."
+            )
+            return
+        
+        if not self.pcap_processor:
+            QMessageBox.warning(
+                self, "Error",
+                "Packet processor not initialized. Please try restarting the application."
+            )
+            return
+        
+        # Open live capture dialog
+        dialog = LiveCaptureDialog(self, self.pcap_processor)
+        dialog.exec()
+        
+        # Update entity tree after capture
+        self._update_entity_tree()
+        
+        # Update dashboards
+        self._update_dashboards()
+        
+    def _check_http_support(self):
+        """Check if HTTP/HTTPS support is properly installed"""
+        # Attempt to import HTTP support from scapy
+        http_support_available = False
+        try:
+            import importlib
+            http_module = importlib.import_module("scapy.contrib.http")
+            http_support_available = True
+        except ImportError:
+            pass
+        
+        if http_support_available:
+            QMessageBox.information(
+                self,
+                "HTTP/HTTPS Support Status",
+                "HTTP/HTTPS packet analysis support is properly installed and available.\n\n"
+                "You can analyze HTTP/HTTPS traffic in captured PCAP files."
+            )
+        else:
+            # Show instructions for manual installation if not found
+            reply = QMessageBox.question(
+                self, 
+                "HTTP/HTTPS Support Not Found",
+                "HTTP/HTTPS packet analysis support appears to be missing or improperly configured.\n\n"
+                "Would you like to install it now?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            
+            if reply == QMessageBox.StandardButton.Yes:
+                QMessageBox.information(
+                    self,
+                    "Installation Required",
+                    "Due to system restrictions, the installation must be run with administrator privileges.\n\n"
+                    "Please restart Net4 using the standard run.sh script, which will now automatically install "
+                    "HTTP/HTTPS support if needed."
+                )
+            
+    def _setup_scapy_http(self):
+        """Legacy method maintained for compatibility"""
+        self._check_http_support()
     
     def _open_settings(self):
         """Open settings dialog"""
@@ -801,11 +897,10 @@ class MainWindow(QMainWindow):
                 if self.config.get("analysis.enable_custom_rules", True):
                     self.rule_engine.load_rules()
             
-            # Update TShark path if session exists
+            # Update settings if session exists
             if self.session and self.pcap_processor:
-                tshark_path = self.config.get("paths.tshark", "")
-                if tshark_path:
-                    self.pcap_processor.tshark_path = tshark_path
+                # Nothing to update dynamically with Scapy-based processor
+                pass
     
     def _open_rules_manager(self):
         """Open rules manager dialog"""
@@ -1209,11 +1304,13 @@ class MainWindow(QMainWindow):
         self.overview_dashboard = OverviewDashboard(self.session, self)
         self.network_flow_dashboard = NetworkFlowDashboard(self.session, self)
         self.event_analysis_dashboard = EventAnalysisDashboard()
+        self.http_analysis_dashboard = HttpAnalysisDashboard(self.session, self)
         self.ai_insights_dashboard = AIInsightsDashboard(self.session, self)
         
         # Set dashboard properties
         for dashboard in [self.overview_dashboard, self.network_flow_dashboard, 
-                         self.event_analysis_dashboard, self.ai_insights_dashboard]:
+                         self.event_analysis_dashboard, self.http_analysis_dashboard,
+                         self.ai_insights_dashboard]:
             dashboard.setProperty("dashboard", True)
         
         # Set session data
@@ -1230,7 +1327,8 @@ class MainWindow(QMainWindow):
         # Add dashboard tabs with clear, simple names
         self.tab_widget.addTab(self.overview_dashboard, "Dashboard")
         self.tab_widget.addTab(self.network_flow_dashboard, "Traffic")
-        self.tab_widget.addTab(self.event_analysis_dashboard, "Events")
+        # Removed Events tab as it's often empty
+        self.tab_widget.addTab(self.http_analysis_dashboard, "HTTP Analysis")
         self.tab_widget.addTab(self.ai_insights_dashboard, "AI Analysis")
         
         # Add dedicated search button in toolbar

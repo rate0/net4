@@ -44,8 +44,10 @@ class ExportThread(QThread):
         """Run the export operation"""
         try:
             if self.export_type == 'pdf':
-                # Create report generator
-                report_gen = ReportGenerator(None)  # No config needed for this
+                # Create report generator with configuration
+                from ...utils.config import Config
+                config = Config()
+                report_gen = ReportGenerator(config)
                 
                 # Get selected sections
                 sections = self.params.get('sections', [])

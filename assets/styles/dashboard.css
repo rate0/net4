@@ -111,7 +111,7 @@
 .network-graph {
     background-color: #282838;
     border-radius: 5px;
-    min-height: 400px;
+    min-height: 300px;
     border: 1px solid #414558;
 }
 
@@ -128,7 +128,7 @@
 .timeline-container {
     background-color: #282838;
     border-radius: 5px;
-    min-height: 250px;
+    min-height: 300px;
     border: 1px solid #414558;
     margin-bottom: 15px;
 }
@@ -386,7 +386,7 @@
 
 .pie-chart {
     width: 100%;
-    height: 250px;
+    height: 300px;
 }
 
 .chart-legend {
@@ -417,7 +417,7 @@
 /* Timeline */
 .timeline-container {
     width: 100%;
-    height: 250px;
+    height: 300px;
     position: relative;
 }
 

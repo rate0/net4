@@ -502,8 +502,8 @@ class EventAnalysisDashboard(QWidget):
         layout.addWidget(self.main_splitter)
         layout.addWidget(search_frame)
         
-        # Set splitter proportions
-        self.main_splitter.setSizes([int(self.height() * 0.6), int(self.height() * 0.4)])
+        # Set splitter proportions - give more space to visualization elements
+        self.main_splitter.setSizes([int(self.height() * 0.7), int(self.height() * 0.3)])
         
         # Connect signals
         self.timeline_chart.point_selected.connect(self._on_timeline_point_selected)
