@@ -753,19 +753,17 @@ class TimelineDashboard(QWidget):
         
         # Zoom controls
         zoom_in_btn = QPushButton()
-        zoom_in_btn.setIcon(QIcon.fromTheme("zoom-in", QIcon("assets/icons/zoom-in.png")))
+        zoom_in_btn.setText("＋")
         zoom_in_btn.setToolTip("Zoom In")
         zoom_in_btn.clicked.connect(self._zoom_in)
         toolbar.addWidget(zoom_in_btn)
         
-        zoom_out_btn = QPushButton()
-        zoom_out_btn.setIcon(QIcon.fromTheme("zoom-out", QIcon("assets/icons/zoom-out.png")))
+        zoom_out_btn = QPushButton("－")
         zoom_out_btn.setToolTip("Zoom Out")
         zoom_out_btn.clicked.connect(self._zoom_out)
         toolbar.addWidget(zoom_out_btn)
         
-        fit_all_btn = QPushButton()
-        fit_all_btn.setIcon(QIcon.fromTheme("zoom-fit-best", QIcon("assets/icons/fit-all.png")))
+        fit_all_btn = QPushButton("⤧")
         fit_all_btn.setToolTip("Fit All Events")
         fit_all_btn.clicked.connect(self._fit_all)
         toolbar.addWidget(fit_all_btn)

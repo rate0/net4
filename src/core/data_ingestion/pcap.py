@@ -491,6 +491,9 @@ class PcapProcessor:
                         "icmp_type": packet[ICMP].type,
                         "icmp_code": packet[ICMP].code
                     })
+                else:
+                    # If not TCP/UDP/ICMP, mark as Other
+                    packet_data["protocol"] = "Other"
             
             # Extract DNS data if present
             if packet.haslayer(DNS):

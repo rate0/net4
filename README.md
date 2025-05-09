@@ -5,7 +5,7 @@ A powerful desktop application for deep forensic analysis of network artifacts w
 ## Features
 
 ### 1. Data Ingestion & Processing
-- Support for PCAP files, network device logs, and other forensic data
+- Support for PCAP files and other network capture formats
 - Automatic parsing, indexing, and structuring for efficient analysis
 - **Native Scapy-based** packet processing with no external dependencies
 - **Live network capture** capability with filtering options
@@ -187,7 +187,7 @@ dashboards:
 reporting:
   company_name: "Net4 Security"
   analyst_name: "Security Analyst"
-  logo_path: "assets/report/net4_logo.png"
+  logo_path: "assets/icons/app_icon.png"
   theme: "corporate"  # corporate, modern, cyber
 ```
 
@@ -226,3 +226,43 @@ If you encounter issues:
 
 ## License
 This software is provided as-is under the MIT license. Use at your own risk.
+
+On Windows simply double-click `run.bat` or execute it from PowerShell / Command Prompt:
+
+```cmd
+run.bat
+```
+
+The batch script provides the same zero-configuration workflow: it creates a virtual environment, installs dependencies, configures Scapy HTTP/HTTPS support and starts the application.
+
+## Project Structure & Cleanliness
+
+- **src/** — Main application source code (UI, core logic, models, utils)
+- **assets/** — Stylesheets and icons
+- **config.yaml** — Main configuration file
+- **requirements.txt** — Python dependencies
+- **run.sh / run.bat** — Cross-platform launchers
+- **venv/** — Python virtual environment (auto-created, do not commit)
+- **.git/** — Git version control (do not modify)
+
+**Removed legacy/unused files:**
+- Node.js files (`package.json`, `package-lock.json`, `node_modules/`) — not used, safe to ignore/remove
+- `setup_scapy_http.py` — legacy script, HTTP/HTTPS support is now automatic
+
+## Documentation & Extending Net4
+
+### Main Modules
+- **src/ui/** — All PyQt dashboards, dialogs, widgets, and main window logic
+- **src/core/** — Data ingestion, analysis, anomaly detection, reporting, rules, threat intelligence
+- **src/models/** — Data models for sessions, entities, events
+- **src/utils/** — Config and logging helpers
+
+### How to Extend
+- Add new dashboards: create a new file in `src/ui/dashboards/` and register it in `main_window.py`
+- Add new analysis: implement in `src/core/analysis/` and call from the UI
+- Add new rules: edit YAML files in `src/core/rules/`
+
+### Developer Notes
+- All virtual environment files (`venv/`) and git internals (`.git/`) are ignored by default
+- No Node.js or JavaScript dependencies are required
+- For custom builds, use `build.py` for cross-platform packaging

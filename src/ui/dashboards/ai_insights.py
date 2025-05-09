@@ -61,27 +61,9 @@ class ChatMessageWidget(QFrame):
         header_layout = QHBoxLayout()
         header_layout.setContentsMargins(0, 0, 0, 5)
         
-        # Icon/Avatar for the sender
-        icon_label = QLabel()
-        icon_size = 24
-        if is_user:
-            avatar_icon = QIcon("assets/icons/user.png")
-            if avatar_icon.isNull():
-                # Default if icon not available
-                icon_label.setText("👤")
-                icon_label.setStyleSheet("color: white; font-size: 14px;")
-            else:
-                pixmap = avatar_icon.pixmap(QSize(icon_size, icon_size))
-                icon_label.setPixmap(pixmap)
-        else:
-            avatar_icon = QIcon("assets/icons/ai.png")
-            if avatar_icon.isNull():
-                # Default if icon not available
-                icon_label.setText("🤖")
-                icon_label.setStyleSheet("color: white; font-size: 14px;")
-            else:
-                pixmap = avatar_icon.pixmap(QSize(icon_size, icon_size))
-                icon_label.setPixmap(pixmap)
+        # Avatar using emoji instead of external icons
+        icon_label = QLabel("👤" if is_user else "🤖")
+        icon_label.setStyleSheet("color: white; font-size: 16px;")
         
         header_layout.addWidget(icon_label)
         
@@ -441,12 +423,8 @@ class AIInsightsDashboard(QWidget):
         input_layout.addWidget(self.question_input)
         
         # Modern styled send button
-        self.ask_button = QPushButton()
-        self.ask_button.setIcon(QIcon("assets/icons/send.png"))
-        if self.ask_button.icon().isNull():
-            self.ask_button.setText("Send")
-        else:
-            self.ask_button.setToolTip("Send message")
+        self.ask_button = QPushButton("➡")
+        self.ask_button.setToolTip("Send message")
         
         self.ask_button.clicked.connect(self._ask_question)
         self.ask_button.setStyleSheet("""

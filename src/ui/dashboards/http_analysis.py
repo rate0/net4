@@ -9,18 +9,20 @@ from datetime import datetime
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, 
-    QSplitter, QTableWidget, QTableWidgetItem, QHeaderView,
+    QSplitter, QTableView, QHeaderView,
     QComboBox, QGroupBox, QScrollArea, QTabWidget, QToolBar,
-    QFrame, QTreeWidget, QTreeWidgetItem, QCheckBox, QGridLayout
+    QFrame, QTreeWidget, QTreeWidgetItem, QCheckBox, QGridLayout, QLineEdit, QSizePolicy, QAbstractItemView
 )
-from PyQt6.QtCore import Qt, QSize, pyqtSignal, pyqtSlot, QUrl
+from PyQt6.QtCore import Qt, QSize, pyqtSignal, pyqtSlot, QUrl, QSortFilterProxyModel
 from PyQt6.QtGui import QIcon, QFont, QColor, QPixmap, QPainter, QBrush
 
-from ..widgets.data_table import DataTable
 from ..widgets.threat_badge import ThreatBadge
-from ..widgets.charts import TimeSeriesChart, PieChart, ChartWidget
+from ..widgets.charts import TimeSeriesChart, PieChart
+from ..widgets.metric_card import MetricCardGrid
+from ..widgets.dashboard_card import DashboardCard
 
 from ...models.session import Session
+from ..models.http_table_model import HttpTableModel
 
 class HttpDetailsWidget(QWidget):
     """Widget for displaying HTTP request/response details"""
@@ -257,91 +259,41 @@ class HttpAnalysisDashboard(QWidget):
         self.https_packets = []
         self.selected_packet = None
         
+        # Placeholder for metric card references (filled in _init_ui)
+        self._metric_cards: dict = {}
+        
         self._init_ui()
-        self.check_http_support()
+        # Silently verify HTTP layer; UI menu will provide explicit status dialog if user needs it
+        self.check_http_support(silent=True)
         self.update_dashboard()
         
-    def check_http_support(self):
-        """Check if HTTP layer is available in Scapy"""
+    def check_http_support(self, silent: bool = False):
+        """Check if HTTP layer is available in Scapy
+
+        Args:
+            silent: If True, do not show dialogs when support is available; only warn on missing support.
+        """
         try:
             from scapy.contrib import http
             return True
         except ImportError:
-            # Show error message
-            from PyQt6.QtWidgets import QMessageBox
-            QMessageBox.warning(
-                self, "HTTP Support Missing",
-                "Scapy HTTP layer is not available. Some features may be limited.\n\n"
-                "Use Tools > Check HTTP/HTTPS Support to verify and install if needed."
-            )
+            # Show warning only if not silent to avoid popup on every launch
+            if not silent:
+                from PyQt6.QtWidgets import QMessageBox
+                QMessageBox.warning(
+                    self, "HTTP Support Missing",
+                    "Scapy HTTP layer is not available. Some features may be limited.\n\n"
+                    "Use Tools > Check HTTP/HTTPS Support to verify and install if needed."
+                )
             return False
     
     def _init_ui(self):
         """Initialize the UI components"""
         layout = QVBoxLayout(self)
-        
-        # Add dashboard metrics section at the top
-        from ..widgets.metric_card import MetricCardGrid
-        from ..widgets.dashboard_card import DashboardCard
-        
-        # Add metrics grid
-        self.metrics_grid = MetricCardGrid(columns=4)
-        # Reasonable minimum height for metrics
-        self.metrics_grid.setMinimumHeight(100)
-        
-        # Add HTTP metrics
-        self.http_requests_card = self.metrics_grid.add_metric(
-            "HTTP Requests", 
-            0, 
-            icon="assets/icons/http.png",
-            color="#2563eb"
-        )
-        
-        self.https_requests_card = self.metrics_grid.add_metric(
-            "HTTPS Requests", 
-            0, 
-            icon="assets/icons/https.png",
-            color="#7c3aed"
-        )
-        
-        self.unique_hosts_card = self.metrics_grid.add_metric(
-            "Unique Hosts", 
-            0, 
-            icon="assets/icons/domain.png",
-            color="#0891b2"
-        )
-        
-        self.avg_response_card = self.metrics_grid.add_metric(
-            "Avg. Response Size", 
-            "0 KB", 
-            icon="assets/icons/file.png",
-            color="#15803d"
-        )
-        
-        # Add metrics to layout
-        layout.addWidget(self.metrics_grid)
-        
-        # Add charts dashboard card
-        self.charts_card = DashboardCard("HTTP Traffic Analysis")
-        charts_layout = QHBoxLayout()
-        
-        # Create time series chart for traffic over time
-        self.traffic_chart = TimeSeriesChart("HTTP Traffic Over Time", height=350)
-        # Charts already have expanding size policy from their base class
-        charts_layout.addWidget(self.traffic_chart)
-        
-        # Create pie chart for HTTP methods
-        self.methods_chart = PieChart("HTTP Methods", height=350)
-        charts_layout.addWidget(self.methods_chart)
-        
-        # Add charts to card
-        self.charts_card.add_layout(charts_layout)
-        self.charts_card.connect_refresh(self.update_charts)
-        
-        # Add charts card to main layout
-        layout.addWidget(self.charts_card)
-        
-        # Toolbar for filters with better styling
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+
+        # --- Toolbar for filters ---
         toolbar_frame = QFrame()
         toolbar_frame.setObjectName("filterToolbar")
         toolbar_frame.setStyleSheet("""
@@ -350,23 +302,21 @@ class HttpAnalysisDashboard(QWidget):
                 border-radius: 5px;
                 border: 1px solid #414558;
                 padding: 5px;
-                margin-top: 10px;
-                margin-bottom: 10px;
+                margin-top: 4px;
+                margin-bottom: 4px;
             }
         """)
-        
         toolbar_layout = QHBoxLayout(toolbar_frame)
-        toolbar_layout.setContentsMargins(10, 5, 10, 5)
-        toolbar_layout.setSpacing(15)
-        
+        toolbar_layout.setContentsMargins(8, 2, 8, 2)
+        toolbar_layout.setSpacing(8)
         # Protocol filter
         protocol_layout = QHBoxLayout()
         protocol_label = QLabel("Protocol:")
-        protocol_label.setStyleSheet("color: #ffffff; font-weight: bold;")
+        protocol_label.setStyleSheet("color: #ffffff;")
         protocol_layout.addWidget(protocol_label)
-        
         self.protocol_combo = QComboBox()
         self.protocol_combo.addItems(["All", "HTTP", "HTTPS"])
+        self.protocol_combo.setFixedHeight(24)
         self.protocol_combo.setStyleSheet("""
             QComboBox {
                 background-color: #323242;
@@ -392,18 +342,16 @@ class HttpAnalysisDashboard(QWidget):
         """)
         self.protocol_combo.currentTextChanged.connect(self._filter_changed)
         protocol_layout.addWidget(self.protocol_combo)
-        
         toolbar_layout.addLayout(protocol_layout)
-        
         # Host filter
         host_layout = QHBoxLayout()
         host_label = QLabel("Host:")
-        host_label.setStyleSheet("color: #ffffff; font-weight: bold;")
+        host_label.setStyleSheet("color: #ffffff;")
         host_layout.addWidget(host_label)
-        
         self.host_combo = QComboBox()
         self.host_combo.setEditable(True)
         self.host_combo.setMinimumWidth(200)
+        self.host_combo.setFixedHeight(24)
         self.host_combo.setStyleSheet("""
             QComboBox {
                 background-color: #323242;
@@ -428,17 +376,15 @@ class HttpAnalysisDashboard(QWidget):
         """)
         self.host_combo.currentTextChanged.connect(self._filter_changed)
         host_layout.addWidget(self.host_combo)
-        
         toolbar_layout.addLayout(host_layout)
-        
         # Method filter
         method_layout = QHBoxLayout()
         method_label = QLabel("Method:")
-        method_label.setStyleSheet("color: #ffffff; font-weight: bold;")
+        method_label.setStyleSheet("color: #ffffff;")
         method_layout.addWidget(method_label)
-        
         self.method_combo = QComboBox()
         self.method_combo.addItem("All")
+        self.method_combo.setFixedHeight(24)
         self.method_combo.setStyleSheet("""
             QComboBox {
                 background-color: #323242;
@@ -464,63 +410,71 @@ class HttpAnalysisDashboard(QWidget):
         """)
         self.method_combo.currentTextChanged.connect(self._filter_changed)
         method_layout.addWidget(self.method_combo)
-        
         toolbar_layout.addLayout(method_layout)
-        
-        # Add spacer to push refresh button to the right
         toolbar_layout.addStretch()
-        
-        # Add refresh button
-        refresh_button = QPushButton("Refresh")
-        refresh_button.setIcon(QIcon("assets/icons/refresh.png"))
-        refresh_button.setStyleSheet("""
-            QPushButton {
-                background-color: #2d74da;
-                color: #ffffff;
-                border-radius: 4px;
-                padding: 5px 10px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #3a82f7;
-            }
-            QPushButton:pressed {
-                background-color: #2361b8;
-            }
-        """)
-        refresh_button.clicked.connect(self.update_dashboard)
-        toolbar_layout.addWidget(refresh_button)
-        
-        # Add toolbar to layout
+        toolbar_frame.setLayout(toolbar_layout)
         layout.addWidget(toolbar_frame)
-        
-        # Main content splitter
-        splitter = QSplitter(Qt.Orientation.Vertical)
-        
-        # HTTP packets table with improved styling
-        self.http_table = DataTable(
-            ["Timestamp", "Host", "Method", "URL", "Status", "Content Type", "Size"],
-            []
-        )
-        self.http_table.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.http_table.table.selectionModel().selectionChanged.connect(self._selection_changed)
-        
-        # Set column widths
-        self.http_table.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)  # Timestamp
-        self.http_table.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)  # Host
-        self.http_table.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)  # Method
-        self.http_table.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)         # URL
-        self.http_table.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)  # Status
-        self.http_table.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)  # Content Type
-        self.http_table.table.horizontalHeader().setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)  # Size
-        
-        # Add to splitter
-        splitter.addWidget(self.http_table)
-        
-        # HTTP details widget
+
+        # --- Search bar ---
+        search_layout = QHBoxLayout()
+        search_layout.setSpacing(6)
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Type to filter...")
+        self.search_input.setMinimumHeight(24)
+        self.search_input.setStyleSheet("""
+            QLineEdit {
+                background-color: #323242;
+                color: #ffffff;
+                border: 1px solid #414558;
+                border-radius: 4px;
+                padding: 2px 6px;
+            }
+            QLineEdit:focus { border-color: #2d74da; }
+        """)
+        self.search_input.textChanged.connect(lambda text: self.http_proxy.setFilterRegularExpression(text))
+        search_layout.addWidget(QLabel("🔍"))
+        search_layout.addWidget(self.search_input)
+        search_widget = QWidget()
+        search_widget.setLayout(search_layout)
+        layout.addWidget(search_widget)
+
+        # --- Main content splitter: table | details ---
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        self._headers = [
+            "Timestamp", "Protocol", "Host", "Method", "URL", "Status", "Content Type", "Size"
+        ]
+        self.http_model = HttpTableModel(self._headers, [])
+        self.http_proxy = QSortFilterProxyModel(self)
+        self.http_proxy.setSourceModel(self.http_model)
+        self.http_proxy.setFilterCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        self.http_proxy.setFilterKeyColumn(-1)  # all columns
+        self.http_table_view = QTableView()
+        self.http_table_view.setModel(self.http_proxy)
+        self.http_table_view.verticalHeader().setDefaultSectionSize(20)
+        self.http_table_view.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.http_table_view.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.http_table_view.setAlternatingRowColors(True)
+        self.http_table_view.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.http_table_view.setSortingEnabled(True)
+        self.http_table_view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        header = self.http_table_view.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(7, QHeaderView.ResizeMode.ResizeToContents)
+        self.http_table_view.selectionModel().selectionChanged.connect(self._selection_changed)
+        table_widget = QWidget()
+        table_layout = QVBoxLayout(table_widget)
+        table_layout.setContentsMargins(0, 0, 0, 0)
+        table_layout.setSpacing(0)
+        table_layout.addWidget(self.http_table_view)
+        table_widget.setMinimumWidth(500)
+        splitter.addWidget(table_widget)
         self.http_details = HttpDetailsWidget()
-        
-        # Wrap in a scroll area with improved styling
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
         scroll_area.setWidget(self.http_details)
@@ -531,13 +485,13 @@ class HttpAnalysisDashboard(QWidget):
             }
             QScrollBar:vertical {
                 background-color: #282838;
-                width: 14px;
+                width: 12px;
                 margin: 0px;
             }
             QScrollBar::handle:vertical {
                 background-color: #414558;
                 min-height: 20px;
-                border-radius: 7px;
+                border-radius: 6px;
             }
             QScrollBar::handle:vertical:hover {
                 background-color: #2d74da;
@@ -546,17 +500,11 @@ class HttpAnalysisDashboard(QWidget):
                 height: 0px;
             }
         """)
-        
-        # Add to splitter
         splitter.addWidget(scroll_area)
-        
-        # Set initial sizes (allocate more space to the table than details)
-        splitter.setSizes([700, 500])
-        
-        # Add splitter to layout
+        self._main_splitter = splitter
         layout.addWidget(splitter)
-        
-        # Add status bar with improved styling
+
+        # --- Status bar ---
         status_frame = QFrame()
         status_frame.setObjectName("statusBar")
         status_frame.setStyleSheet("""
@@ -564,153 +512,40 @@ class HttpAnalysisDashboard(QWidget):
                 background-color: #282838;
                 border-radius: 5px;
                 border: 1px solid #414558;
-                margin-top: 10px;
+                margin-top: 6px;
             }
         """)
-        
         status_layout = QHBoxLayout(status_frame)
-        status_layout.setContentsMargins(15, 8, 15, 8)
-        
-        # Status icon
-        self.status_icon = QLabel()
-        status_icon_pixmap = QPixmap("assets/icons/info.png")
-        if not status_icon_pixmap.isNull():
-            self.status_icon.setPixmap(status_icon_pixmap.scaled(
-                16, 16, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
-            ))
+        status_layout.setContentsMargins(10, 4, 10, 4)
+        self.status_icon = QLabel("ℹ️")
+        self.status_icon.setStyleSheet("color: #ffffff; font-size: 14px;")
         status_layout.addWidget(self.status_icon)
-        
-        # Status text
         self.status_label = QLabel()
         self.status_label.setStyleSheet("color: #ffffff;")
         status_layout.addWidget(self.status_label)
-        
-        # Add spacer to push to left
         status_layout.addStretch()
-        
         layout.addWidget(status_frame)
     
     def update_dashboard(self):
         """Update the dashboard with current session data"""
         self.http_packets = []
         self.https_packets = []
-        
         # Extract HTTP and HTTPS packets from session
         if hasattr(self.session, 'packets'):
             for packet in self.session.packets:
                 if "http" in packet:
-                    # Is this HTTP or HTTPS?
                     is_https = packet.get("is_https", False)
-                    
                     if is_https:
                         self.https_packets.append(packet)
                     else:
                         self.http_packets.append(packet)
-        
-        # Update metric cards
-        self._update_metrics()
-        
         # Update status label with more detailed information
         total_packets = len(self.http_packets) + len(self.https_packets)
         self.status_label.setText(f"Total: {total_packets} packets (HTTP: {len(self.http_packets)}, HTTPS: {len(self.https_packets)})")
-        
-        # Update charts
-        self.update_charts()
-        
         # Update filter dropdowns
         self._update_filter_options()
-        
         # Apply current filters
         self._filter_changed()
-    
-    def update_charts(self):
-        """Update all charts with current data"""
-        # Update traffic over time chart
-        if hasattr(self, 'traffic_chart'):
-            # Extract timestamp data
-            time_data = []
-            
-            # Extract timestamps from all packets and count by time
-            from collections import Counter
-            from datetime import datetime, timedelta
-            
-            # Use filtered packets based on the current filter settings
-            all_packets = self.http_packets + self.https_packets
-            
-            # Group timestamps by minute for a meaningful chart
-            timestamps = []
-            for packet in all_packets:
-                if "timestamp" in packet:
-                    ts = packet["timestamp"] 
-                    if isinstance(ts, datetime):
-                        # Round to the nearest minute
-                        rounded = ts.replace(second=0, microsecond=0)
-                        timestamps.append(rounded)
-            
-            # Count packets by minute
-            counter = Counter(timestamps)
-            
-            # Sort by timestamp
-            time_data = [(ts, count) for ts, count in sorted(counter.items())]
-            
-            # Update chart with data
-            self.traffic_chart.update_data(time_data)
-        
-        # Update methods chart
-        if hasattr(self, 'methods_chart'):
-            # Extract HTTP methods data
-            methods_counter = Counter()
-            
-            for packet in self.http_packets + self.https_packets:
-                if "http" in packet and "method" in packet["http"]:
-                    method = packet["http"]["method"]
-                    methods_counter[method] += 1
-            
-            # Convert to list of tuples for pie chart
-            methods_data = [(method, count) for method, count in methods_counter.most_common()]
-            
-            # Update chart with data
-            self.methods_chart.update_data(methods_data)
-    
-    def _update_metrics(self):
-        """Update metric cards with current data"""
-        # Update HTTP requests count
-        self.http_requests_card.update_value(len(self.http_packets))
-        
-        # Update HTTPS requests count
-        self.https_requests_card.update_value(len(self.https_packets))
-        
-        # Calculate unique hosts
-        hosts = set()
-        for packet in self.http_packets + self.https_packets:
-            if "http" in packet and "host" in packet["http"]:
-                hosts.add(packet["http"]["host"])
-        self.unique_hosts_card.update_value(len(hosts))
-        
-        # Calculate average response size
-        total_size = 0
-        response_count = 0
-        
-        for packet in self.http_packets + self.https_packets:
-            if "http" in packet and "content_length" in packet["http"]:
-                try:
-                    content_length = int(packet["http"]["content_length"])
-                    total_size += content_length
-                    response_count += 1
-                except (ValueError, TypeError):
-                    pass
-        
-        if response_count > 0:
-            avg_size = total_size / response_count
-            # Format size nicely
-            if avg_size > 1024 * 1024:
-                avg_size_str = f"{avg_size / (1024 * 1024):.1f} MB"
-            elif avg_size > 1024:
-                avg_size_str = f"{avg_size / 1024:.1f} KB"
-            else:
-                avg_size_str = f"{avg_size:.0f} B"
-            
-            self.avg_response_card.update_value(avg_size_str)
     
     def _update_filter_options(self):
         """Update filter dropdown options based on available data"""
@@ -798,16 +633,17 @@ class HttpAnalysisDashboard(QWidget):
                 time_str = timestamp.strftime("%Y-%m-%d %H:%M:%S")
             else:
                 time_str = str(timestamp)
-            
+
+            protocol = packet.get("protocol", "")
             http_data = packet.get("http", {})
-            
+
             host = http_data.get("host", "")
             method = http_data.get("method", "")
             uri = http_data.get("uri", "")
             status = http_data.get("response_code", "")
             content_type = http_data.get("content_type", "")
             content_length = http_data.get("content_length", "")
-            
+
             # Format content length
             if content_length:
                 try:
@@ -822,12 +658,31 @@ class HttpAnalysisDashboard(QWidget):
                     size_str = str(content_length)
             else:
                 size_str = ""
-            
+
             # Add to table data
-            table_data.append([time_str, host, method, uri, status, content_type, size_str])
+            table_data.append([time_str, protocol, host, method, uri, status, content_type, size_str])
         
-        # Update table
-        self.http_table.update_data(table_data)
+        # Build list-of-dict rows for the model
+        dict_rows = [
+            {
+                "Timestamp": r[0],
+                "Protocol": r[1],
+                "Host": r[2],
+                "Method": r[3],
+                "URL": r[4],
+                "Status": r[5],
+                "Content Type": r[6],
+                "Size": r[7],
+            } for r in table_data
+        ]
+
+        self.http_model.update(dict_rows)
+        
+        # Auto-select first row for better UX
+        if dict_rows:
+            self.http_table_view.selectRow(0)
+            # Ensure details reflect selection
+            self._selection_changed()
         
         # Store filtered packets for selection handling
         self.filtered_packets = filtered_packets
@@ -838,15 +693,16 @@ class HttpAnalysisDashboard(QWidget):
     def _selection_changed(self):
         """Handle selection change in the table"""
         # Get selected row
-        selection = self.http_table.table.selectionModel().selectedRows()
+        selection = self.http_table_view.selectionModel().selectedRows()
         if not selection:
             # Clear details if nothing selected
             self.selected_packet = None
             self.http_details.update_http_data({})
             return
             
-        # Get the selected packet
-        row = selection[0].row()
+        proxy_index = selection[0]
+        source_index = self.http_proxy.mapToSource(proxy_index)
+        row = source_index.row()
         if row >= len(self.filtered_packets):
             return
             

@@ -25,17 +25,19 @@ class OverviewDashboard(QWidget):
     about the analysis session.
     """
     
-    def __init__(self, session: Session, parent=None):
+    def __init__(self, session: Session, main_window=None, parent=None):
         """
         Initialize overview dashboard
         
         Args:
             session: Analysis session
+            main_window: Main window instance
             parent: Parent widget
         """
         super().__init__(parent)
         
         self.session = session
+        self.main_window = main_window
         self._init_ui()
     
     def _init_ui(self):
@@ -98,9 +100,8 @@ class OverviewDashboard(QWidget):
         # Action buttons with improved styling
         action_layout = QVBoxLayout()
         
-        self.analyze_button = QPushButton("Run AI Analysis")
-        self.analyze_button.setIcon(QIcon("assets/icons/ai.png"))
-        self.analyze_button.clicked.connect(self._run_ai_analysis)
+        self.analyze_button = QPushButton("🤖 AI Analysis")
+        self.analyze_button.clicked.connect(self._goto_ai_analysis_tab)
         self.analyze_button.setStyleSheet("""
             QPushButton {
                 background-color: #2d74da;
@@ -118,9 +119,8 @@ class OverviewDashboard(QWidget):
         """)
         action_layout.addWidget(self.analyze_button)
         
-        self.anomaly_button = QPushButton("Detect Anomalies")
-        self.anomaly_button.setIcon(QIcon("assets/icons/anomaly.png"))
-        self.anomaly_button.clicked.connect(self._detect_anomalies)
+        self.anomaly_button = QPushButton("⚠ Anomalies")
+        self.anomaly_button.clicked.connect(self._goto_anomalies_tab)
         self.anomaly_button.setStyleSheet("""
             QPushButton {
                 background-color: #7e22ce;
@@ -378,6 +378,10 @@ class OverviewDashboard(QWidget):
         anomaly_layout.addWidget(self.anomaly_count_label, alignment=Qt.AlignmentFlag.AlignCenter)
         
         grid_layout.addWidget(anomaly_card, 0, 3)
+        
+        # Make columns stretch evenly for responsive layout
+        for col in range(4):
+            grid_layout.setColumnStretch(col, 1)
         
         metrics_layout.addWidget(metrics_grid)
         self.summary_content_layout.addWidget(metrics_frame)
@@ -2154,20 +2158,6 @@ class OverviewDashboard(QWidget):
         
         return data
     
-    def _run_ai_analysis(self):
-        """Run AI analysis on session data"""
-        # Get main window reference
-        main_window = self.parent()
-        if hasattr(main_window, "_run_ai_analysis"):
-            main_window._run_ai_analysis()
-    
-    def _detect_anomalies(self):
-        """Detect anomalies in session data"""
-        # Get main window reference
-        main_window = self.parent()
-        if hasattr(main_window, "_detect_anomalies"):
-            main_window._detect_anomalies()
-    
     def _format_bytes(self, bytes_value: int) -> str:
         """Format bytes to human-readable string"""
         if bytes_value < 1024:
@@ -2192,3 +2182,13 @@ class OverviewDashboard(QWidget):
         else:
             days = seconds / 86400
             return f"{days:.1f} days"
+
+    def _goto_ai_analysis_tab(self):
+        """Switch to AI Analysis tab"""
+        if self.main_window and hasattr(self.main_window, 'tab_widget') and hasattr(self.main_window, 'ai_insights_dashboard'):
+            self.main_window.tab_widget.setCurrentWidget(self.main_window.ai_insights_dashboard)
+
+    def _goto_anomalies_tab(self):
+        """Run anomaly detection"""
+        if self.main_window:
+            self.main_window._detect_anomalies()

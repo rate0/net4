@@ -63,7 +63,7 @@ dashboards:
 reporting:
   company_name: "Net4 Security"
   analyst_name: "Security Analyst"
-  logo_path: "assets/report/net4_logo.png"
+  logo_path: "assets/icons/app_icon.png"
   default_export_format: "pdf"
   include_session_metadata: true
   theme: "corporate"  # corporate, modern, cyber

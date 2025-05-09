@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional, Set
 
 from PyQt6.QtWidgets import (
@@ -310,9 +310,9 @@ class NetworkFlowDashboard(QWidget):
         now = datetime.now()
         
         if time_filter == "Last hour":
-            time_threshold = now.replace(minute=now.minute-60, second=0, microsecond=0)
+            time_threshold = now - timedelta(hours=1)
         elif time_filter == "Last 24 hours":
-            time_threshold = now.replace(day=now.day-1, hour=now.hour, minute=now.minute, second=0, microsecond=0)
+            time_threshold = now - timedelta(hours=24)
         
         # Apply filters
         self.filtered_connections = []
@@ -494,8 +494,11 @@ class NetworkFlowDashboard(QWidget):
         dst_threat = self._get_ip_threat_badge(dst_ip)
         
         # Clear old widgets if any
-        old_src_widget = self.detail_grid.itemAtPosition(3, 5).widget()
-        old_dst_widget = self.detail_grid.itemAtPosition(3, 7).widget()
+        src_item = self.detail_grid.itemAtPosition(3, 5)
+        dst_item = self.detail_grid.itemAtPosition(3, 7)
+        
+        old_src_widget = src_item.widget() if src_item else None
+        old_dst_widget = dst_item.widget() if dst_item else None
         
         if old_src_widget:
             self.detail_grid.removeWidget(old_src_widget)

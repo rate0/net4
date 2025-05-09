@@ -8,6 +8,7 @@ import ipaddress
 
 from ...utils.logger import Logger
 from ...models.session import Session
+from ...models.event import Event
 
 
 class Rule:
@@ -383,6 +384,89 @@ class RuleEngine:
                 },
                 category="command_and_control",
                 tags=["dns", "tunneling", "evasion"]
+            ),
+            # === Newly added realistic baseline rules ===
+            Rule(
+                rule_id="default:web:suspicious_user_agent",
+                name="Suspicious User-Agent",
+                description="Detects common tooling User-Agents such as curl, python-requests, wget.",
+                severity="low",
+                conditions={
+                    "http.user_agent": {"regex": "(?:curl|wget|python-requests|libwww|powershell)"}
+                },
+                actions={
+                    "add_entity_tag": "suspicious_ua",
+                    "set_threat_level": "low"
+                },
+                category="web",
+                tags=["http", "user_agent", "recon"]
+            ),
+            Rule(
+                rule_id="default:tls:deprecated_version",
+                name="Deprecated TLS Version",
+                description="TLS handshake indicates version <= 1.1 which is considered weak.",
+                severity="medium",
+                conditions={
+                    "tls.version": {"lt": 1.2}
+                },
+                actions={
+                    "add_entity_tag": "weak_tls",
+                    "set_threat_level": "suspicious"
+                },
+                category="encryption",
+                tags=["tls", "crypto", "weak"]
+            ),
+            Rule(
+                rule_id="default:smb:outbound_smb",
+                name="Outbound SMB to Internet",
+                description="SMB traffic to public IPs may indicate worm or misconfiguration.",
+                severity="high",
+                conditions={
+                    "protocol": "SMB",
+                    "dst_ip": {"ip_in_subnet": ["0.0.0.0/0", "!10.0.0.0/8", "!172.16.0.0/12", "!192.168.0.0/16"]}
+                },
+                actions={
+                    "alert": True,
+                    "set_threat_level": "malicious",
+                    "add_entity_tag": "outbound_smb"
+                },
+                category="lateral_movement",
+                tags=["smb", "worm", "exposure"]
+            ),
+            Rule(
+                rule_id="default:auth:multiple_failed_logins",
+                name="Multiple Failed Authentications",
+                description="5 or more failed logins from same IP within 5 minutes.",
+                severity="medium",
+                conditions={
+                    "event_type": "auth_failed",
+                    "count": {"gte": 5},
+                    "interval": {"lte": 300}
+                },
+                actions={
+                    "alert": True,
+                    "add_entity_tag": "brute_force",
+                    "set_threat_level": "suspicious"
+                },
+                category="authentication",
+                tags=["auth", "brute_force"]
+            ),
+            Rule(
+                rule_id="default:exfil:dns_tunnel_high_ratio",
+                name="High DNS Query/Data Ratio",
+                description="Average length of DNS query name > 50 characters indicates tunneling.",
+                severity="medium",
+                conditions={
+                    "protocol": "DNS",
+                    "dns.query_length_avg": {"gt": 50},
+                    "dns.query_count": {"gt": 20}
+                },
+                actions={
+                    "add_anomaly": {"type": "dns_tunnel", "detail": "high_query_length"},
+                    "set_threat_level": "suspicious"
+                },
+                category="exfiltration",
+                tags=["dns", "tunneling"]
             )
         ]
         
@@ -644,3 +728,10 @@ class RuleEngine:
                 
                 # Add anomaly to session
                 session.add_anomaly(anomaly)
+
+        # If alert flag present, append Event to timeline
+        if actions.get("alert"):
+            alert_desc = f"Rule {rule.name} triggered on {connection.get('src_ip')} → {connection.get('dst_ip')}"
+            alert_event = Event(timestamp=datetime.now(), source="rules", category="alert", description=alert_desc,
+                                data={"rule_id": rule.id, "severity": rule.severity, "connection": connection})
+            session.timeline_events.append(alert_event.to_dict())

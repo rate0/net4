@@ -4,15 +4,15 @@ from datetime import datetime
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
-    QComboBox, QCheckBox, QTableWidget, QTableWidgetItem, QHeaderView,
-    QMenu, QDialog, QTabWidget, QMessageBox, QGroupBox, QFormLayout,
-    QRadioButton, QButtonGroup, QSplitter, QTextEdit, QFrame, QToolBar
+    QComboBox, QCheckBox, QHeaderView, QMenu, QDialog, QTabWidget, QMessageBox, QGroupBox, QFormLayout,
+    QRadioButton, QButtonGroup, QSplitter, QTextEdit, QFrame, QToolBar, QTableView, QAbstractItemView
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QSize, QRegularExpression
 from PyQt6.QtGui import QIcon, QAction, QFont, QColor, QRegularExpressionValidator
 
 from ...models.session import Session
 from ...utils.logger import Logger
+from ..models.generic_table_model import GenericTableModel
 
 
 class QueryParser:
@@ -316,7 +316,7 @@ class SearchQuery:
                         return True
                     elif case_sensitive and text in value:
                         return True
-                
+            
             return False
             
         elif query_type == "logical":
@@ -671,9 +671,11 @@ class GlobalSearchWidget(QWidget):
         super().__init__(parent)
         
         self.logger = Logger().get_logger()
-        self.session = None
+        self.session: Optional[Session] = None
         self.current_query = SearchQuery()
-        self.results = []
+        self.results: List[Dict[str, Any]] = []
+        self._all_items: List[Dict[str, Any]] = []  # cached searchable objects
+        self._index_built = False
         self.available_fields = set()
         
         self._init_ui()
@@ -851,17 +853,10 @@ class GlobalSearchWidget(QWidget):
         results_layout.addWidget(results_title)
         
         # Enhanced results table with better styling
-        self.results_table = QTableWidget()
-        self.results_table.setColumnCount(5)  # Type, Value, Details, Score, Matched Field
-        self.results_table.setHorizontalHeaderLabels([
-            "Type", "Value", "Details", "Relevance", "Matched Field"
-        ])
-        self.results_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
-        self.results_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        self.results_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.results_table.setAlternatingRowColors(True)
+        self._result_headers = ["Type", "Value", "Details", "Relevance", "Matched Field"]
+        self.results_table = QTableView()
         self.results_table.setStyleSheet("""
-            QTableWidget {
+            QTableView {
                 background-color: #2d2d2d;
                 alternate-background-color: #353535;
                 color: #f0f0f0;
@@ -877,19 +872,28 @@ class GlobalSearchWidget(QWidget):
                 border: 1px solid #555555;
                 font-weight: bold;
             }
-            QTableWidget::item {
+            QTableView::item {
                 padding: 4px;
                 border-bottom: 1px solid #3a3a3a;
             }
-            QTableWidget::item:selected {
+            QTableView::item:selected {
                 background-color: #2196f3;
                 color: white;
             }
         """)
+        self.results_table.setAlternatingRowColors(True)
+        self.results_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.results_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self._results_model = GenericTableModel(self._result_headers, [])
+        self.results_table.setModel(self._results_model)
+        # Header configuration similar to previous
+        header = self.results_table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         results_layout.addWidget(self.results_table)
         
         # Connect double click event
-        self.results_table.itemDoubleClicked.connect(self._item_double_clicked)
+        self.results_table.doubleClicked.connect(self._item_double_clicked)
         
         # Add results container to main layout
         layout.addWidget(results_container)
@@ -984,6 +988,70 @@ class GlobalSearchWidget(QWidget):
         """
         self.session = session
         self.available_fields = self._collect_available_fields()
+        
+        # Build quick in-memory index once per session for faster repeated searches
+        self._build_index()
+    
+    def _build_index(self):
+        """Collect all searchable items from current session and cache them"""
+        self._all_items.clear()
+        if not self.session:
+            return
+
+        # Packets -> Events
+        for packet in getattr(self.session, 'packets', []):
+            self._all_items.append({
+                "type": "packet",
+                "time": packet.get("timestamp", datetime.now()),
+                "src_ip": packet.get("src_ip", ""),
+                "dst_ip": packet.get("dst_ip", ""),
+                "protocol": packet.get("protocol", ""),
+                "value": f"{packet.get('src_ip', '')} → {packet.get('dst_ip', '')}",
+                "details": f"{packet.get('protocol', '')} {packet.get('length', 0)} bytes",
+                "original": packet
+            })
+
+        # Entities
+        for entity in getattr(self.session, 'network_entities', {}).values():
+            self._all_items.append({
+                "type": "entity",
+                "time": entity.first_seen,
+                "value": entity.value,
+                "entity_type": entity.type,
+                "threat_level": entity.threat_level,
+                "tags": ", ".join(entity.tags),
+                "details": f"{entity.type} ({entity.threat_level})",
+                "original": entity
+            })
+
+        # Connections
+        for conn in getattr(self.session, 'connections', []):
+            self._all_items.append({
+                "type": "connection",
+                "time": conn.get("timestamp", datetime.now()),
+                "src_ip": conn.get("src_ip", ""),
+                "dst_ip": conn.get("dst_ip", ""),
+                "src_port": conn.get("src_port", ""),
+                "dst_port": conn.get("dst_port", ""),
+                "protocol": conn.get("protocol", ""),
+                "value": f"{conn.get('src_ip', '')}:{conn.get('src_port', '')} → {conn.get('dst_ip', '')}:{conn.get('dst_port', '')}",
+                "details": f"{conn.get('protocol', '')} connection",
+                "original": conn
+            })
+
+        # Anomalies
+        for anomaly in getattr(self.session, 'anomalies', []):
+            self._all_items.append({
+                "type": "anomaly",
+                "time": anomaly.get("timestamp", datetime.now()),
+                "value": anomaly.get("description", ""),
+                "anomaly_type": anomaly.get("type", ""),
+                "severity": anomaly.get("severity", ""),
+                "details": f"{anomaly.get('type', '')} ({anomaly.get('severity', '')})",
+                "original": anomaly
+            })
+
+        self._index_built = True
     
     def _perform_search(self):
         """Perform search with current query"""
@@ -1026,61 +1094,11 @@ class GlobalSearchWidget(QWidget):
             self.search_info.setText("Searching...")
             self.search_info.setVisible(True)
             
-            # Collect data to search
-            items = []
-            
-            # Add packets
-            for packet in self.session.packets:
-                items.append({
-                    "type": "packet",
-                    "time": packet.get("timestamp", datetime.now()),
-                    "src_ip": packet.get("src_ip", ""),
-                    "dst_ip": packet.get("dst_ip", ""),
-                    "protocol": packet.get("protocol", ""),
-                    "value": f"{packet.get('src_ip', '')} → {packet.get('dst_ip', '')}",
-                    "details": f"{packet.get('protocol', '')} {packet.get('length', 0)} bytes",
-                    "original": packet
-                })
-            
-            # Add network entities
-            for entity in self.session.network_entities.values():
-                items.append({
-                    "type": "entity",
-                    "time": entity.first_seen,
-                    "value": entity.value,
-                    "entity_type": entity.type,
-                    "threat_level": entity.threat_level,
-                    "tags": ", ".join(entity.tags),
-                    "details": f"{entity.type} ({entity.threat_level})",
-                    "original": entity
-                })
-            
-            # Add connections
-            for conn in self.session.connections:
-                items.append({
-                    "type": "connection",
-                    "time": conn.get("timestamp", datetime.now()),
-                    "src_ip": conn.get("src_ip", ""),
-                    "dst_ip": conn.get("dst_ip", ""),
-                    "src_port": conn.get("src_port", ""),
-                    "dst_port": conn.get("dst_port", ""),
-                    "protocol": conn.get("protocol", ""),
-                    "value": f"{conn.get('src_ip', '')}:{conn.get('src_port', '')} → {conn.get('dst_ip', '')}:{conn.get('dst_port', '')}",
-                    "details": f"{conn.get('protocol', '')} connection",
-                    "original": conn
-                })
-            
-            # Add anomalies
-            for anomaly in self.session.anomalies:
-                items.append({
-                    "type": "anomaly",
-                    "time": anomaly.get("timestamp", datetime.now()),
-                    "value": anomaly.get("description", ""),
-                    "anomaly_type": anomaly.get("type", ""),
-                    "severity": anomaly.get("severity", ""),
-                    "details": f"{anomaly.get('type', '')} ({anomaly.get('severity', '')})",
-                    "original": anomaly
-                })
+            # Use cached items, rebuild if needed
+            if not self._index_built:
+                self._build_index()
+
+            items = self._all_items
             
             # Filter items based on query
             self.results = []
@@ -1221,58 +1239,29 @@ class GlobalSearchWidget(QWidget):
     
     def _update_results_table(self):
         """Update results table with current results"""
-        # Clear table
-        self.results_table.setRowCount(0)
-        
-        # Add results
-        for row, result in enumerate(self.results):
-            self.results_table.insertRow(row)
-            
-            # Type
-            type_item = QTableWidgetItem(result.get("type", "").capitalize())
-            self.results_table.setItem(row, 0, type_item)
-            
-            # Value
-            value_item = QTableWidgetItem(str(result.get("value", "")))
-            self.results_table.setItem(row, 1, value_item)
-            
-            # Details
-            details_item = QTableWidgetItem(result.get("details", ""))
-            self.results_table.setItem(row, 2, details_item)
-            
-            # Score
-            score = result.get("score", 0)
-            score_item = QTableWidgetItem("")
-            score_item.setData(Qt.ItemDataRole.DisplayRole, f"{score:.2f}")
-            
-            # Color based on score
-            if score >= 0.7:
-                score_item.setBackground(QColor("#d4edda"))  # Bootstrap success light
-            elif score >= 0.4:
-                score_item.setBackground(QColor("#fff3cd"))  # Bootstrap warning light
-            else:
-                score_item.setBackground(QColor("#f8f9fa"))  # Bootstrap light
-            
-            self.results_table.setItem(row, 3, score_item)
-            
-            # Matched field
-            matched_field_item = QTableWidgetItem(result.get("matched_field", ""))
-            self.results_table.setItem(row, 4, matched_field_item)
-            
-            # Highlight matched field
-            if self.current_query.text and result.get("matched_field"):
-                matched_field_item.setBackground(QColor("#daeeff"))  # Light blue
+        rows = []
+        for result in self.results:
+            rows.append({
+                "Type": result.get("type", "").capitalize(),
+                "Value": str(result.get("value", "")),
+                "Details": result.get("details", ""),
+                "Relevance": f"{result.get('score', 0):.2f}",
+                "Matched Field": result.get("matched_field", "")
+            })
+
+        self._results_model.update(rows)
+        # Resize for better UX
+        self.results_table.resizeColumnsToContents()
     
-    def _item_double_clicked(self, item):
+    def _item_double_clicked(self, index):
         """
         Handle double click on result item
         
         Args:
-            item: Item that was clicked
+            index: Item that was clicked
         """
-        row = item.row()
-        if 0 <= row < len(self.results):
-            result = self.results[row]
+        if 0 <= index.row() < len(self.results):
+            result = self.results[index.row()]
             self.item_selected.emit(result)
     
     def _collect_available_fields(self) -> set:

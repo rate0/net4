@@ -47,9 +47,8 @@ class DashboardToolbar(QFrame):
         layout.setContentsMargins(10, 0, 10, 0)
         layout.setSpacing(15)
         
-        # Add refresh button with text
-        self.refresh_button = QPushButton("Refresh")
-        self.refresh_button.setIcon(QIcon("assets/icons/refresh.png"))
+        # Add refresh button (emoji to replace icon)
+        self.refresh_button = QPushButton("↻ Refresh")
         self.refresh_button.setStyleSheet("""
             QPushButton {
                 background-color: #2d74da;
@@ -91,11 +90,7 @@ class DashboardToolbar(QFrame):
                 width: 20px;
                 border-left: 1px solid #414558;
             }
-            QComboBox::down-arrow {
-                image: url(assets/icons/down_arrow.png);
-                width: 12px;
-                height: 12px;
-            }
+            /* Default down-arrow used – removed broken PNG reference */
             QComboBox QAbstractItemView {
                 background-color: #323242;
                 color: #ffffff;
@@ -142,11 +137,7 @@ class DashboardToolbar(QFrame):
                 width: 20px;
                 border-left: 1px solid #414558;
             }
-            QComboBox::down-arrow {
-                image: url(assets/icons/down_arrow.png);
-                width: 12px;
-                height: 12px;
-            }
+            /* Default arrow icon */
             QComboBox QAbstractItemView {
                 background-color: #323242;
                 color: #ffffff;
@@ -173,8 +164,7 @@ class DashboardToolbar(QFrame):
         layout.addStretch()
         
         # Add export button with menu
-        self.export_button = QPushButton("Export")
-        self.export_button.setIcon(QIcon("assets/icons/export.png"))
+        self.export_button = QPushButton("📤 Export")
         self.export_button.setStyleSheet("""
             QPushButton {
                 background-color: #323242;
@@ -227,8 +217,7 @@ class DashboardToolbar(QFrame):
         
         # Add settings button
         self.settings_button = QToolButton()
-        self.settings_button.setIcon(QIcon("assets/icons/settings.png"))
-        self.settings_button.setIconSize(QSize(18, 18))
+        self.settings_button.setText("⚙")
         self.settings_button.setToolTip("Dashboard Settings")
         self.settings_button.setStyleSheet("""
             QToolButton {

@@ -21,17 +21,18 @@ import matplotlib
 # Explicitly set the backend and suppress any warnings
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
-    matplotlib.use('Qt5Agg')
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+    matplotlib.use('QtAgg')
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 import matplotlib.patheffects
 import numpy as np
 from typing import List, Tuple, Dict, Any, Optional
 from datetime import datetime
+from datetime import timedelta
 
 from PyQt6.QtWidgets import QSizePolicy, QVBoxLayout, QWidget, QLabel, QToolBar, QPushButton, QSlider
-from PyQt6.QtCore import Qt, QSize
+from PyQt6.QtCore import Qt, QSize, pyqtSignal
 from PyQt6.QtGui import QFont, QIcon
 
 
@@ -411,6 +412,23 @@ class TimeSeriesChart(BaseChart):
         # Format x-axis as dates
         self.fig.autofmt_xdate()
         
+        # Adjust x-axis limits to data range with small padding so single points don't stretch years
+        import matplotlib.dates as mdates
+        if len(timestamps) == 1:
+            # single point – show ±30 minutes window
+            center = mdates.date2num(timestamps[0])
+            pad = 30 / (24*60)  # 30 minutes in days
+            self.axes.set_xlim(center - pad, center + pad)
+            self.axes.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+        else:
+            self.axes.set_xlim(mdates.date2num(min(timestamps)), mdates.date2num(max(timestamps)))
+            span = (max(timestamps) - min(timestamps)).total_seconds()
+            # choose formatter based on span
+            if span < 86400:  # < 1 day
+                self.axes.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+            else:
+                self.axes.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+        
         # Add grid with improved styling
         self.axes.grid(True, linestyle='--', alpha=0.4, color='#8a8a9a')
         
@@ -519,7 +537,6 @@ class TimelineChart(BaseChart):
     """
     
     # Signal when a point on the timeline is selected
-    from PyQt6.QtCore import pyqtSignal
     point_selected = pyqtSignal(dict)
     
     def __init__(self, title: str = "Timeline Analysis", parent=None, height=300, dpi=100):
@@ -761,6 +778,11 @@ class TimelineChart(BaseChart):
                         # Update chart to highlight this point
                         self._update_chart(highlight_event=event_data)
                         break
+
+    # Provide alias for ChartWidget
+    def update_data(self, events):
+        """Alias for set_data for compatibility with ChartWidget interface."""
+        self.set_data(events)
 
 
 class NetworkGraph(QWidget):
@@ -1151,6 +1173,23 @@ class NetworkGraph(QWidget):
                         self.node_selected.emit(node)
                         self._draw_graph(preserve_layout=True)  # Redraw with highlight
                         break
+
+    # ------------------------------------------------------------------
+    # ChartWidget compatibility helpers
+    # ------------------------------------------------------------------
+    def update_data(self, data):
+        """Alias for set_data to ensure compatibility with ChartWidget.
+
+        Args:
+            data: Tuple[List[dict], List[dict]] where first item is nodes and
+                  second item is edges.
+        """
+        if isinstance(data, tuple) and len(data) == 2:
+            nodes, edges = data
+            self.set_data(nodes, edges)
+        else:
+            # If data is in unexpected format, fallback to empty graph
+            self.set_data([], [])
 
 
 class ChartWidget(QWidget):

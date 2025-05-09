@@ -7,10 +7,10 @@ import matplotlib
 # Explicitly set the backend and suppress any warnings
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
-    matplotlib.use('Qt5Agg')
+    matplotlib.use('QtAgg')
 from matplotlib.figure import Figure
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QComboBox,

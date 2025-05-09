@@ -1,7 +1,5 @@
 PyQt6>=6.4.0
 # Removed pyshark dependency (no longer using Wireshark/tshark)
-# dpkt - keeping for compatibility but not directly used
-dpkt>=1.9.7
 # Scapy for packet processing (required)
 scapy>=2.5.0
 # Cryptography for TLS/HTTPS analysis
@@ -18,11 +16,13 @@ requests>=2.28.0
 python-dateutil>=2.8.2
 # Config
 pyyaml>=6.0
-# UI components
-pyqtgraph>=0.13.0
 # Reporting
 reportlab>=3.6.0
 # Domain info
 python-whois>=0.7.0
 # Analysis
 scipy>=1.9.0
+# dpkt - keeping for compatibility but not directly used
+dpkt>=1.9.7
+# UI components
+pyqtgraph>=0.13.0

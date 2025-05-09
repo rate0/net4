@@ -292,12 +292,14 @@ class AIEngine:
             parts.append(f"{packet_count} packets")
         
         # IP count
-        ip_count = len([e for e in session.network_entities.values() if e.type == "ip"]) if hasattr(session, 'network_entities') else 0
+        ents_iter = self._iter_entities(session)
+        ip_count = len([e for e in ents_iter if getattr(e, 'type', '') == "ip"])
         if ip_count:
             parts.append(f"{ip_count} IP addresses")
         
         # Domain count
-        domain_count = len([e for e in session.network_entities.values() if e.type == "domain"]) if hasattr(session, 'network_entities') else 0
+        ents_iter = self._iter_entities(session)
+        domain_count = len([e for e in ents_iter if getattr(e, 'type', '') == "domain"])
         if domain_count:
             parts.append(f"{domain_count} domains")
         
@@ -661,8 +663,10 @@ class AIEngine:
                 data["files"] = list(session.files.values())[:5]  # Limit to first 5
             
             # Include network stats
-            ip_count = len([e for e in session.network_entities.values() if e.type == "ip"]) if hasattr(session, 'network_entities') else 0
-            domain_count = len([e for e in session.network_entities.values() if e.type == "domain"]) if hasattr(session, 'network_entities') else 0
+            ents_iter = self._iter_entities(session)
+            ip_count = len([e for e in ents_iter if getattr(e, 'type', '') == "ip"])
+            ents_iter = self._iter_entities(session)
+            domain_count = len([e for e in ents_iter if getattr(e, 'type', '') == "domain"])
             
             data["network_stats"] = {
                 "connection_count": len(session.connections) if hasattr(session, 'connections') else 0,
@@ -683,7 +687,7 @@ class AIEngine:
             # Focus on potential threats
             if hasattr(session, 'network_entities'):
                 suspicious_entities = [
-                    e.to_dict() for e in session.network_entities.values()
+                    e.to_dict() for e in self._iter_entities(session)
                     if e.threat_level in ["suspicious", "malicious"]
                 ]
                 
@@ -691,11 +695,11 @@ class AIEngine:
                     "suspicious_entities": suspicious_entities,
                     "threat_intelligence": {k: v.to_dict() for k, v in session.threat_intelligence.items()} if hasattr(session, 'threat_intelligence') else {},
                     "ip_sample": [
-                        e.to_dict() for e in list(session.network_entities.values())[:50]
+                        e.to_dict() for e in list(self._iter_entities(session))[:50]
                         if e.type == "ip"
                     ],
                     "domain_sample": [
-                        e.to_dict() for e in list(session.network_entities.values())[:50]
+                        e.to_dict() for e in list(self._iter_entities(session))[:50]
                         if e.type == "domain"
                     ],
                     "connection_sample": session.connections[:50] if hasattr(session, 'connections') and len(session.connections) > 0 else []
@@ -716,7 +720,7 @@ class AIEngine:
                 "connection_sample": session.connections[:200] if hasattr(session, 'connections') and len(session.connections) > 0 else [],
                 "protocol_distribution": session.metadata.get("protocols", []) if hasattr(session, 'metadata') else [],
                 "network_entities": [
-                    e.to_dict() for e in list(session.network_entities.values())[:100]
+                    e.to_dict() for e in list(self._iter_entities(session))[:100]
                 ] if hasattr(session, 'network_entities') else []
             }
         
@@ -766,7 +770,7 @@ class AIEngine:
                 # Find specific information about mentioned IPs
                 mentioned_ips = []
                 for ip in ip_matches:
-                    for entity in session.network_entities.values():
+                    for entity in self._iter_entities(session):
                         if entity.type == "ip" and entity.value == ip:
                             mentioned_ips.append(entity.to_dict())
                             # Add connections involving this IP
@@ -782,7 +786,7 @@ class AIEngine:
             elif hasattr(session, 'network_entities'):
                 # No specific IPs mentioned, include sample of IPs
                 ip_entities = [
-                    e.to_dict() for e in list(session.network_entities.values())[:50]
+                    e.to_dict() for e in list(self._iter_entities(session))[:50]
                     if e.type == "ip"
                 ]
                 context["ip_sample"] = ip_entities
@@ -790,7 +794,7 @@ class AIEngine:
         # Add domain-related data
         if any(kw in question_lower for kw in ["domain", "dns", "web", "site", "url"]) and hasattr(session, 'network_entities'):
             domain_entities = [
-                e.to_dict() for e in list(session.network_entities.values())[:50]
+                e.to_dict() for e in list(self._iter_entities(session))[:50]
                 if e.type == "domain"
             ]
             context["domain_sample"] = domain_entities
@@ -802,7 +806,7 @@ class AIEngine:
         # Add threat-related data
         if any(kw in question_lower for kw in ["threat", "malicious", "suspicious", "attack", "compromise"]) and hasattr(session, 'network_entities'):
             suspicious_entities = [
-                e.to_dict() for e in session.network_entities.values()
+                e.to_dict() for e in self._iter_entities(session)
                 if e.threat_level in ["suspicious", "malicious"]
             ]
             threat_data = {
@@ -932,3 +936,16 @@ class AIEngine:
         """
         
         return final_prompt
+
+    # ------------------------------------------------------------------
+    # Utility helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _iter_entities(session: 'Session'):
+        """Return an iterable over NetworkEntity objects regardless of how they are stored."""
+        ents = getattr(session, 'network_entities', {})
+        if isinstance(ents, dict):
+            return ents.values()
+        # Fallback if list-like
+        return ents or []

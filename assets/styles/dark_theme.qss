@@ -33,9 +33,10 @@ QPushButton {
     background-color: #2d74da;
     color: #ffffff;
     border: none;
-    border-radius: 3px;
-    padding: 6px 16px;
+    border-radius: 4px;
+    padding: 8px 20px;
     font-weight: bold;
+    min-height: 30px;
 }
 
 QPushButton:hover {
@@ -101,6 +102,7 @@ QTreeView::item:selected, QListView::item:selected, QTableView::item:selected {
 /* Table Elements */
 QTableView {
     gridline-color: #323242;
+    color: #ffffff;
 }
 
 QHeaderView::section {
@@ -201,10 +203,11 @@ QComboBox QAbstractItemView {
 /* Group Boxes */
 QGroupBox {
     border: 1px solid #414558;
-    border-radius: 3px;
+    border-radius: 4px;
     margin-top: 12px;
     padding-top: 15px;
     font-weight: bold;
+    color: #ffffff;
 }
 
 QGroupBox::title {
@@ -277,6 +280,7 @@ QToolButton {
     background-color: transparent;
     border-radius: 3px;
     padding: 5px;
+    color: #ffffff;
 }
 
 QToolButton:hover {
@@ -428,4 +432,9 @@ QLabel[section="true"] {
     font-size: 12pt;
     font-weight: bold;
     padding: 5px 0;
+}
+
+/* Tree Widget items */
+QTreeWidget, QTreeWidget QTreeWidgetItem {
+    color: #ffffff;
 }

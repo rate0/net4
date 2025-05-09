@@ -2,7 +2,7 @@ from typing import List, Any, Optional, Callable
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QTableWidget, QTableWidgetItem, QHeaderView,
-    QAbstractItemView, QMenu, QLineEdit, QHBoxLayout, QLabel, QPushButton
+    QAbstractItemView, QMenu, QLineEdit, QHBoxLayout, QLabel, QPushButton, QSizePolicy
 )
 from PyQt6.QtCore import Qt, QSortFilterProxyModel, QRegularExpression
 from PyQt6.QtGui import QAction, QColor, QBrush, QFont
@@ -54,17 +54,46 @@ class DataTable(QWidget):
         
         # Search bar (initially hidden)
         self.search_layout = QHBoxLayout()
-        self.search_label = QLabel("Search:")
+        self.search_label = QLabel("🔍")
+        self.search_label.setStyleSheet("color: #ffffff; font-size: 14px; margin-right:4px;")
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Filter table...")
+        self.search_input.setPlaceholderText("Type to filter...")
+        self.search_input.setMinimumHeight(28)
+        self.search_input.setStyleSheet("""
+            QLineEdit {
+                background-color: #323242;
+                color: #ffffff;
+                border: 1px solid #414558;
+                border-radius: 4px;
+                padding: 4px 8px;
+            }
+            QLineEdit:focus {
+                border-color: #2d74da;
+            }
+        """)
         self.search_input.textChanged.connect(self._filter_changed)
         
-        self.search_clear = QPushButton("Clear")
+        self.search_clear = QPushButton("✖")
+        self.search_clear.setToolTip("Clear filter")
+        self.search_clear.setFixedWidth(32)
+        self.search_clear.setStyleSheet("""
+            QPushButton {
+                background-color: #414558;
+                color: #ffffff;
+                border: none;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover { background-color: #53536a; }
+            QPushButton:pressed { background-color: #2d74da; }
+        """)
         self.search_clear.clicked.connect(self._clear_filter)
         
         self.search_layout.addWidget(self.search_label)
         self.search_layout.addWidget(self.search_input)
         self.search_layout.addWidget(self.search_clear)
+        self.search_layout.setContentsMargins(5, 0, 5, 6)
+        self.search_layout.setSpacing(6)
         
         # Hide search bar initially if not searchable
         if not self.searchable:
@@ -76,6 +105,9 @@ class DataTable(QWidget):
         
         # Table widget
         self.table = QTableWidget()
+        # Ensure table expands within parent and stays tall enough to avoid single-row squish
+        self.table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.table.setMinimumHeight(160)
         self.table.setColumnCount(len(self.headers))
         self.table.setHorizontalHeaderLabels(self.headers)
         self.table.verticalHeader().setVisible(False)
@@ -84,6 +116,9 @@ class DataTable(QWidget):
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setAlternatingRowColors(True)
         self.table.setSortingEnabled(True)
+        
+        # Make rows slightly taller for readability
+        self.table.verticalHeader().setDefaultSectionSize(24)
         
         # Set context menu policy
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)

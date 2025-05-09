@@ -6,6 +6,7 @@ from typing import Dict, List, Any, Optional, Set
 
 from .network_entity import NetworkEntity
 from .threat_info import ThreatInfo
+from .event import Event  # Lazy import to avoid circular
 
 class Session:
     """
@@ -110,13 +111,19 @@ class Session:
         if protocol:
             self.metadata["protocols"].add(protocol)
         
-        # Update timeline
-        self.add_timeline_event({
-            "timestamp": packet.get("timestamp"),
-            "type": "packet",
-            "packet_id": len(self.packets) - 1,
-            "description": f"{packet.get('src_ip', 'Unknown')} -> {packet.get('dst_ip', 'Unknown')} [{packet.get('protocol', 'Unknown')}]"
-        })
+        # Add unified Event object to timeline
+        try:
+            ev = Event.from_packet(packet)
+            self.timeline_events.append(ev.to_dict())
+        except Exception:
+            # Fallback to legacy dict if something fails
+            self.add_timeline_event({
+                "timestamp": packet.get("timestamp"),
+                "source": "pcap",
+                "category": "network",
+                "description": f"{packet.get('src_ip', 'Unknown')} -> {packet.get('dst_ip', 'Unknown')} [{packet.get('protocol', 'Unknown')}]",
+                "data": packet,
+            })
         
         self.last_modified = datetime.now()
     

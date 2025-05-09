@@ -26,7 +26,6 @@ from .dialogs.live_capture import LiveCaptureDialog
 
 from ..models.session import Session
 from ..core.data_ingestion.pcap import PcapProcessor
-from ..core.data_ingestion.log_parser import LogParser
 from ..core.analysis.ai_engine import AIEngine
 from ..core.analysis.anomaly import AnomalyDetector
 from ..core.ti.virustotal import VirusTotalClient
@@ -65,11 +64,6 @@ class RuleSignals(QObject):
     """Signal class for thread-safe rule evaluation callbacks"""
     progress_updated = pyqtSignal(str, float)      # message, progress
     evaluation_complete = pyqtSignal(dict)         # result dictionary
-
-class LogSignals(QObject):
-    """Signal class for thread-safe log processing callbacks"""
-    progress_updated = pyqtSignal(int, int)        # current, total
-    processing_complete = pyqtSignal(dict)         # result dictionary
 
 class MainWindow(QMainWindow):
     """
@@ -130,11 +124,6 @@ class MainWindow(QMainWindow):
         self.rule_signals = RuleSignals()
         self.rule_signals.progress_updated.connect(self._update_progress_with_message)
         self.rule_signals.evaluation_complete.connect(self._rule_evaluation_complete)
-        
-        # Log signals
-        self.log_signals = LogSignals()
-        self.log_signals.progress_updated.connect(self._update_progress)
-        self.log_signals.processing_complete.connect(self._log_processing_complete)
         
         # Dashboards
         self.overview_dashboard = None
@@ -221,17 +210,17 @@ class MainWindow(QMainWindow):
         # File menu
         file_menu = self.menuBar().addMenu("&File")
         
-        new_action = QAction(QIcon.fromTheme("document-new"), "&New Session", self)
+        new_action = QAction("🗋 New", self)
         new_action.setShortcut("Ctrl+N")
         new_action.triggered.connect(self._new_session)
         file_menu.addAction(new_action)
         
-        open_action = QAction(QIcon.fromTheme("document-open"), "&Open Session", self)
+        open_action = QAction("📂 Open", self)
         open_action.setShortcut("Ctrl+O")
         open_action.triggered.connect(self._open_session)
         file_menu.addAction(open_action)
         
-        save_action = QAction(QIcon.fromTheme("document-save"), "&Save Session", self)
+        save_action = QAction("💾 Save", self)
         save_action.setShortcut("Ctrl+S")
         save_action.triggered.connect(self._save_session)
         file_menu.addAction(save_action)
@@ -240,16 +229,11 @@ class MainWindow(QMainWindow):
         
         import_menu = file_menu.addMenu("&Import")
         
-        import_pcap_action = QAction("Import &PCAP File", self)
+        import_pcap_action = QAction("📥 PCAP", self)
         import_pcap_action.triggered.connect(self._import_pcap)
         import_menu.addAction(import_pcap_action)
         
-        import_log_action = QAction("Import &Log File", self)
-        import_log_action.triggered.connect(self._import_log)
-        import_menu.addAction(import_log_action)
-        
-        import_menu.addSeparator()
-        
+        # Live capture action - text only since we don't have a good icon
         capture_live_action = QAction("&Live Capture", self)
         capture_live_action.triggered.connect(self._start_live_capture)
         import_menu.addAction(capture_live_action)
@@ -268,7 +252,7 @@ class MainWindow(QMainWindow):
         # Analysis menu
         analysis_menu = self.menuBar().addMenu("&Analysis")
         
-        analyze_ai_action = QAction("AI &Analysis", self)
+        analyze_ai_action = QAction("🤖 Analyze", self)
         analyze_ai_action.triggered.connect(self._run_ai_analysis)
         analysis_menu.addAction(analyze_ai_action)
         
@@ -282,7 +266,7 @@ class MainWindow(QMainWindow):
         detect_anomalies_action.triggered.connect(self._detect_anomalies)
         analysis_menu.addAction(detect_anomalies_action)
         
-        threat_intel_action = QAction("&Threat Intelligence Lookup", self)
+        threat_intel_action = QAction("⚠ Threats", self)
         threat_intel_action.triggered.connect(self._lookup_threat_intel)
         analysis_menu.addAction(threat_intel_action)
         
@@ -341,28 +325,28 @@ class MainWindow(QMainWindow):
         self.addToolBar(main_toolbar)
         
         # File actions group
-        new_action = QAction(QIcon.fromTheme("document-new", QIcon("assets/icons/new.png")), "New Session", self)
+        new_action = QAction("🆕 New", self)
         new_action.triggered.connect(self._new_session)
         main_toolbar.addAction(new_action)
         
-        open_action = QAction(QIcon.fromTheme("document-open", QIcon("assets/icons/open.png")), "Open Session", self)
+        open_action = QAction("📂 Open", self)
         open_action.triggered.connect(self._open_session)
         main_toolbar.addAction(open_action)
         
-        save_action = QAction(QIcon.fromTheme("document-save", QIcon("assets/icons/save.png")), "Save Session", self)
+        save_action = QAction("💾 Save", self)
         save_action.triggered.connect(self._save_session)
         main_toolbar.addAction(save_action)
         
         main_toolbar.addSeparator()
         
         # Import group - primary actions for data import
-        import_pcap_action = QAction(QIcon("assets/icons/pcap.png"), "Import PCAP", self)
+        import_pcap_action = QAction("📥 PCAP", self)
         import_pcap_action.triggered.connect(self._import_pcap)
         import_pcap_action.setToolTip("Import PCAP file for analysis")
         main_toolbar.addAction(import_pcap_action)
         
         # Live capture action - text only since we don't have a good icon
-        live_capture_action = QAction("Live Capture", self)
+        live_capture_action = QAction("🐽 Live Capture", self)
         live_capture_action.triggered.connect(self._start_live_capture)
         live_capture_action.setToolTip("Capture live network traffic (requires admin privileges)")
         main_toolbar.addAction(live_capture_action)
@@ -370,13 +354,13 @@ class MainWindow(QMainWindow):
         main_toolbar.addSeparator()
         
         # Analysis group - most important analysis actions
-        ai_action = QAction(QIcon("assets/icons/ai.png"), "Analyze", self)
+        ai_action = QAction("🤖 Analyze", self)
         ai_action.triggered.connect(self._run_ai_analysis)
         ai_action.setToolTip("Run automatic AI analysis on data")
         main_toolbar.addAction(ai_action)
         
         # Threat intelligence - key feature
-        threat_action = QAction(QIcon("assets/icons/threat.png"), "Lookup Threats", self)
+        threat_action = QAction("⚠ Threats", self)
         threat_action.triggered.connect(self._lookup_threat_intel)
         threat_action.setToolTip("Look up potential threats in threat intelligence databases")
         main_toolbar.addAction(threat_action)
@@ -423,8 +407,15 @@ class MainWindow(QMainWindow):
         self.entity_dock.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | 
                                         Qt.DockWidgetArea.RightDockWidgetArea)
         
-        # Add dock to main window
-        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.entity_dock)
+        # Ensure dock can be closed, moved and floated
+        self.entity_dock.setFeatures(
+            QDockWidget.DockWidgetFeature.DockWidgetClosable |
+            QDockWidget.DockWidgetFeature.DockWidgetMovable |
+            QDockWidget.DockWidgetFeature.DockWidgetFloatable
+        )
+
+        # Add dock to main window (left side by default). Users могут перетащить.
+        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.entity_dock)
     
     def _load_window_state(self):
         """Load window state from settings"""
@@ -464,7 +455,8 @@ class MainWindow(QMainWindow):
         # Initialize core components
         debug_mode = self.config.get("debug", False)
         self.pcap_processor = PcapProcessor(self.session, debug=debug_mode)
-        self.log_parser = LogParser(self.session)
+        # Log analysis has been deprecated; focus solely on PCAP and network traffic.
+        self.log_parser = None
         
         # Create dashboards
         self._init_dashboards()
@@ -507,7 +499,8 @@ class MainWindow(QMainWindow):
             # Initialize core components with debug mode from config
             debug_mode = self.config.get("debug", False)
             self.pcap_processor = PcapProcessor(self.session, debug=debug_mode)
-            self.log_parser = LogParser(self.session)
+            # Log analysis deprecated
+            self.log_parser = None
             
             # Create dashboards
             self._init_dashboards()
@@ -592,28 +585,12 @@ class MainWindow(QMainWindow):
         )
     
     def _import_log(self):
-        """Import log file for analysis"""
-        if not self.session:
-            self._new_session()
-        
-        # Get log file path
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, "Import Log File", "",
-            "Log Files (*.log *.txt *.csv);;All Files (*)"
-        )
-        
-        if not file_path:
-            return
-        
-        # Update status
-        self.status_bar.showMessage("Processing log file...")
-        self.progress_bar.setVisible(True)
-        
-        # Process log asynchronously using our signal handlers
-        self.log_parser.process_file_async(
-            file_path,
-            progress_callback=self.log_signals.progress_updated.emit,
-            completion_callback=self.log_signals.processing_complete.emit
+        """Deprecated: Log analysis has been removed. Show information message."""
+        QMessageBox.information(
+            self,
+            "Log Analysis Disabled",
+            "Log file analysis has been removed in the current version.\n"
+            "Please use PCAP import or live capture for network traffic analysis."
         )
     
     def _run_ai_analysis(self):
@@ -629,7 +606,7 @@ class MainWindow(QMainWindow):
         if not self.session.packets and not self.session.network_entities:
             QMessageBox.warning(
                 self, "No Data to Analyze",
-                "Please import data (PCAP, logs) before running analysis."
+                "Please import PCAP data or capture live traffic before running analysis."
             )
             return
     
@@ -671,7 +648,7 @@ class MainWindow(QMainWindow):
         if not self.session.packets and not self.session.network_entities:
             QMessageBox.warning(
                 self, "No Data to Analyze",
-                "Please import data (PCAP, logs) before using AI chat."
+                "Please import PCAP data or capture live traffic before using AI chat."
             )
             return
         
@@ -742,7 +719,7 @@ class MainWindow(QMainWindow):
         if not self.session.packets and not self.session.network_entities:
             QMessageBox.warning(
                 self, "No Data to Analyze",
-                "Please import data (PCAP, logs) before running anomaly detection."
+                "Please import PCAP data or capture live traffic before running anomaly detection."
             )
             return
         
@@ -841,8 +818,12 @@ class MainWindow(QMainWindow):
         # Update dashboards
         self._update_dashboards()
         
-    def _check_http_support(self):
-        """Check if HTTP/HTTPS support is properly installed"""
+    def _check_http_support(self, silent=False):
+        """Check if HTTP/HTTPS support is properly installed
+
+        Args:
+            silent: Если True, не показывать информационные диалоги при успешной проверке.
+        """
         # Attempt to import HTTP support from scapy
         http_support_available = False
         try:
@@ -852,35 +833,17 @@ class MainWindow(QMainWindow):
         except ImportError:
             pass
         
-        if http_support_available:
+        if http_support_available and not silent:
             QMessageBox.information(
                 self,
                 "HTTP/HTTPS Support Status",
                 "HTTP/HTTPS packet analysis support is properly installed and available.\n\n"
                 "You can analyze HTTP/HTTPS traffic in captured PCAP files."
             )
-        else:
-            # Show instructions for manual installation if not found
-            reply = QMessageBox.question(
-                self, 
-                "HTTP/HTTPS Support Not Found",
-                "HTTP/HTTPS packet analysis support appears to be missing or improperly configured.\n\n"
-                "Would you like to install it now?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-            )
-            
-            if reply == QMessageBox.StandardButton.Yes:
-                QMessageBox.information(
-                    self,
-                    "Installation Required",
-                    "Due to system restrictions, the installation must be run with administrator privileges.\n\n"
-                    "Please restart Net4 using the standard run.sh script, which will now automatically install "
-                    "HTTP/HTTPS support if needed."
-                )
-            
+    
     def _setup_scapy_http(self):
         """Legacy method maintained for compatibility"""
-        self._check_http_support()
+        self._check_http_support(silent=True)
     
     def _open_settings(self):
         """Open settings dialog"""
@@ -984,7 +947,7 @@ class MainWindow(QMainWindow):
         if not self.session.packets and not self.session.network_entities:
             QMessageBox.warning(
                 self, "No Data to Analyze",
-                "Please import data (PCAP, logs) before evaluating rules."
+                "Please import PCAP data or capture live traffic before evaluating rules."
             )
             return
         
@@ -1114,7 +1077,7 @@ class MainWindow(QMainWindow):
         QMessageBox.about(
             self, "About Net4",
             f"<h2>Net4 - Network Forensic Analysis</h2>"
-            f"<p>Version 1.0.0</p>"
+            f"<p>Version 1.1.0</p>"
             f"<p>A powerful desktop application for deep forensic analysis "
             f"of network artifacts with AI-powered insights and "
             f"seamless Threat Intelligence integration.</p>"
@@ -1301,7 +1264,7 @@ class MainWindow(QMainWindow):
         self.tab_widget.clear()
         
         # Create dashboards
-        self.overview_dashboard = OverviewDashboard(self.session, self)
+        self.overview_dashboard = OverviewDashboard(self.session, main_window=self, parent=self)
         self.network_flow_dashboard = NetworkFlowDashboard(self.session, self)
         self.event_analysis_dashboard = EventAnalysisDashboard()
         self.http_analysis_dashboard = HttpAnalysisDashboard(self.session, self)
@@ -1332,7 +1295,7 @@ class MainWindow(QMainWindow):
         self.tab_widget.addTab(self.ai_insights_dashboard, "AI Analysis")
         
         # Add dedicated search button in toolbar
-        search_action = QAction(QIcon.fromTheme("edit-find", QIcon("assets/icons/search.png")), "Global Search", self)
+        search_action = QAction("🔍 Search", self)
         search_action.triggered.connect(self._show_global_search)
         
         # Add to main toolbar if it exists
@@ -1525,6 +1488,11 @@ class MainWindow(QMainWindow):
         if total > 0:
             progress = int((current / total) * 100)
             self.progress_bar.setValue(progress)
+            self.status_bar.showMessage(f"Processed {current} / {total} packets")
+        else:
+            # For live capture we only know current count
+            self.progress_bar.setMaximum(0)  # Indeterminate mode
+            self.status_bar.showMessage(f"Captured {current} packets...")
     
     def _update_progress_with_message(self, message, progress):
         """
@@ -1579,39 +1547,6 @@ class MainWindow(QMainWindow):
             
             # Run rules evaluation after a short delay
             QTimer.singleShot(2000, self._run_rules_evaluation)
-    
-    def _log_processing_complete(self, result):
-        """
-        Handle log processing completion
-        
-        Args:
-            result: Processing result
-        """
-        self.progress_bar.setVisible(False)
-        
-        if "error" in result:
-            QMessageBox.critical(
-                self, "Error Processing Log",
-                f"An error occurred while processing the log file:\n{result['error']}"
-            )
-            self.status_bar.showMessage("Log processing failed", 3000)
-            return
-        
-        # Update UI
-        self._update_entity_tree()
-        self._update_dashboards()
-        
-        # Run threat classifier
-        self.threat_classifier = ThreatClassifier(self.session)
-        self.threat_classifier.classify_session_entities()
-        
-        # Show result
-        self.status_bar.showMessage(
-            f"Log processing complete: {result.get('processed_lines', 0)} lines, "
-            f"{result.get('matched_lines', 0)} matched, "
-            f"{result.get('ip_entities', 0)} IPs, {result.get('domain_entities', 0)} domains",
-            5000
-        )
     
     def _ai_analysis_complete(self, result):
         """

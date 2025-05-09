@@ -885,6 +885,21 @@ class ReportGenerator:
         story.append(Paragraph("2. Traffic Overview", styles["Heading1"]))
         story.append(Spacer(1, 0.2*inch))
         
+        # Traffic summary with null checks
+        metadata = getattr(session, 'metadata', {}) or {}
+        packet_count = metadata.get("packet_count", 0)
+        start_time = metadata.get("start_time")
+        end_time = metadata.get("end_time")
+        duration = metadata.get("duration", 0)
+        
+        summary_items = []
+        
+        summary_items.append(f"Captured Packets: {packet_count}")
+        
+        if start_time and end_time:
+            summary_items.append(f"Capture Time Range: {self._safe_format_timestamp(start_time)} to {self._safe_format_timestamp(end_time)}")
+            summary_items.append(f"Capture Duration: {self._format_duration(duration)}")
+        
         # Connection statistics
         story.append(Paragraph("Connection Statistics", styles["Heading2"]))
         story.append(Spacer(1, 0.1*inch))
@@ -1706,154 +1721,19 @@ class ReportGenerator:
         story.append(Paragraph("6. Event Timeline", styles["Heading1"]))
         story.append(Spacer(1, 0.2*inch))
         
-        # Check for timeline events with null safety
-        timeline_events = getattr(session, 'timeline_events', []) or []
-        if not timeline_events:
-            story.append(Paragraph("No timeline events available for this session.", styles["Normal"]))
-            return
+        # Get timeline events
+        events = getattr(session, 'timeline_events', []) or []
         
-        # Sort events by timestamp with thorough null checks
-        events = []
-        for event in timeline_events:
-            if isinstance(event, dict) and "timestamp" in event:
-                events.append(event)
-        
-        events.sort(key=lambda e: e.get("timestamp", datetime.min))
-        
-        if not events:
-            story.append(Paragraph("No timeline events with timestamps available.", styles["Normal"]))
-            return
-        
-        # Summarize event types
-        event_types = {}
-        for event in events:
-            event_type = event.get("type", "unknown")
-            event_types[event_type] = event_types.get(event_type, 0) + 1
-        
-        # Event type summary
-        story.append(Paragraph("Event Type Summary", styles["Heading2"]))
-        story.append(Spacer(1, 0.1*inch))
-        
-        type_data = [["Event Type", "Count"]]
-        for event_type, count in event_types.items():
-            type_data.append([event_type.replace("_", " ").title(), str(count)])
-        
-        if len(type_data) == 1:
-            type_data.append(["No events", "0"])
-            
-        type_table = Table(type_data, colWidths=[2*inch, 1*inch])
-        type_table.setStyle(TableStyle([
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-            ('FONTSIZE', (0, 0), (-1, -1), 10),
-            ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-            ('TOPPADDING', (0, 0), (-1, -1), 4),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-            ('ALIGN', (1, 0), (1, -1), 'CENTER'),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ]))
-        
-        story.append(type_table)
-        story.append(Spacer(1, 0.2*inch))
-        
-        # Key events (focus on important events) with thorough null checks
-        story.append(Paragraph("Key Events", styles["Heading2"]))
-        story.append(Spacer(1, 0.1*inch))
-        
-        # Find key events
-        key_events = []
-        
-        # Add anomaly events with thorough null checks
-        anomalies = getattr(session, 'anomalies', []) or []
-        for anomaly in anomalies:
-            if not isinstance(anomaly, dict):
-                continue
-                
-            if anomaly.get("severity") in ["high", "medium"]:
-                timestamp = anomaly.get("timestamp")
-                if timestamp:
-                    key_events.append({
-                        "timestamp": timestamp,
-                        "type": "anomaly",
-                        "description": anomaly.get("description", "No description"),
-                        "severity": anomaly.get("severity", "unknown"),
-                        "anomaly_type": anomaly.get("type", "unknown"),
-                        "anomaly_subtype": anomaly.get("subtype", "")
-                    })
-        
-        # Add first and last events
         if events:
-            first_event = events[0]
-            key_events.append({
-                "timestamp": first_event.get("timestamp"),
-                "type": "session_start",
-                "description": "First activity in session",
-                "event_type": first_event.get("type", "unknown")
-            })
+            # Sort by timestamp
+            events.sort(key=lambda x: x.get("timestamp", datetime.min))
             
-            last_event = events[-1]
-            key_events.append({
-                "timestamp": last_event.get("timestamp"),
-                "type": "session_end",
-                "description": "Last activity in session",
-                "event_type": last_event.get("type", "unknown")
-            })
-        
-        # Add suspicious connections with thorough null checks
-        connections = getattr(session, 'connections', []) or []
-        network_entities = getattr(session, 'network_entities', {}) or {}
-        
-        for conn in connections:
-            if not isinstance(conn, dict):
-                continue
-                
-            src_ip = conn.get("src_ip", "")
-            dst_ip = conn.get("dst_ip", "")
-            
-            if not src_ip or not dst_ip:
-                continue
-            
-            # Check if either IP is malicious
-            src_malicious = False
-            dst_malicious = False
-            
-            for entity_id, entity in network_entities.items():
-                if not hasattr(entity, 'type') or not hasattr(entity, 'threat_level') or not hasattr(entity, 'value'):
-                    continue
-                    
-                if entity.type == "ip" and entity.threat_level == "malicious":
-                    if entity.value == src_ip:
-                        src_malicious = True
-                    if entity.value == dst_ip:
-                        dst_malicious = True
-            
-            if src_malicious or dst_malicious:
-                # Get timestamp safely
-                timestamp = conn.get("first_seen")
-                if not timestamp:
-                    continue
-                    
-                key_events.append({
-                    "timestamp": timestamp,
-                    "type": "suspicious_connection",
-                    "description": f"Connection between {src_ip} and {dst_ip} (Protocol: {conn.get('protocol', 'unknown')})",
-                    "src_ip": src_ip,
-                    "dst_ip": dst_ip,
-                    "protocol": conn.get("protocol", "unknown"),
-                    "severity": "high" if src_malicious and dst_malicious else "medium"
-                })
-        
-        # Sort key events by timestamp
-        key_events.sort(key=lambda e: e.get("timestamp", datetime.min))
-        
-        # Create table for key events
-        if key_events:
+            # Create table for key events
             key_data = [["Time", "Event Type", "Description"]]
             
-            for event in key_events[:20]:  # Limit to 20
+            for event in events[:20]:  # Limit to 20
                 timestamp = event.get("timestamp")
-                time_str = timestamp.strftime("%Y-%m-%d %H:%M:%S") if timestamp else "Unknown"
+                time_str = self._safe_format_timestamp(timestamp)
                 
                 event_type = event.get("type", "unknown").replace("_", " ").title()
                 
@@ -1870,10 +1750,10 @@ class ReportGenerator:
                     description = description[:57] + "..."
                 
                 key_data.append([time_str, event_type, description])
-            
-            if len(key_data) == 1:
-                key_data.append(["N/A", "N/A", "N/A"])
-                
+        
+        if key_data == [["Time", "Event Type", "Description"]]:
+            story.append(Paragraph("No key events identified.", styles["Normal"]))
+        else:
             key_table = Table(key_data, colWidths=[1.5*inch, 1.5*inch, 3*inch])
             key_table.setStyle(TableStyle([
                 ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
@@ -1888,10 +1768,8 @@ class ReportGenerator:
             
             story.append(key_table)
             
-            if len(key_events) > 20:
-                story.append(Paragraph(f"... and {len(key_events) - 20} more key events", styles["Normal"]))
-        else:
-            story.append(Paragraph("No key events identified.", styles["Normal"]))
+            if len(key_data) > 20:
+                story.append(Paragraph(f"... and {len(key_data) - 20} more key events", styles["Normal"]))
         
         story.append(Spacer(1, 0.2*inch))
         
@@ -1905,8 +1783,9 @@ class ReportGenerator:
             event_times = []
             for event in events:
                 timestamp = event.get("timestamp")
-                if timestamp:
-                    event_times.append(timestamp)
+                dt = self._ensure_datetime(timestamp)
+                if dt:
+                    event_times.append(dt)
             
             if event_times:
                 # Create histogram - FIX: Increased figure size and margins
@@ -2001,3 +1880,29 @@ class ReportGenerator:
             "unknown": 0
         }
         return levels.get(severity, 0)
+    
+    def _safe_format_timestamp(self, timestamp) -> str:
+        """Safely format a timestamp that could be string or datetime"""
+        if timestamp is None:
+            return "Unknown"
+        if isinstance(timestamp, datetime):
+            return timestamp.strftime("%Y-%m-%d %H:%M:%S")
+        if isinstance(timestamp, str):
+            try:
+                # Try to parse ISO format string
+                dt = datetime.fromisoformat(timestamp)
+                return dt.strftime("%Y-%m-%d %H:%M:%S")
+            except (ValueError, TypeError):
+                return str(timestamp)
+        return str(timestamp)
+    
+    def _ensure_datetime(self, value):
+        """Преобразует строку или datetime в datetime. Если не удается — возвращает None."""
+        if isinstance(value, datetime):
+            return value
+        if isinstance(value, str):
+            try:
+                return datetime.fromisoformat(value)
+            except Exception:
+                pass
+        return None

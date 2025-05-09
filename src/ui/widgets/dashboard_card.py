@@ -14,7 +14,7 @@ class DashboardCard(QFrame):
     # Signal emitted when the card is collapsed or expanded
     toggle_collapsed = pyqtSignal(bool)  # True when collapsed
     
-    def __init__(self, title, parent=None, collapsible=True, collapsed=False):
+    def __init__(self, title, parent=None, collapsible=True, collapsed=False, show_refresh=True):
         """
         Initialize the dashboard card
         
@@ -23,6 +23,7 @@ class DashboardCard(QFrame):
             parent: Parent widget
             collapsible (bool): Whether the card is collapsible
             collapsed (bool): Initial collapsed state
+            show_refresh (bool): Whether to show the refresh button
         """
         super().__init__(parent)
         
@@ -81,26 +82,23 @@ class DashboardCard(QFrame):
         self.controls_layout = QHBoxLayout()
         self.controls_layout.setSpacing(8)  # More space between buttons
         
-        # Add refresh button with improved styling
-        self.refresh_button = QToolButton()
-        self.refresh_button.setIcon(QIcon("assets/icons/refresh.png"))
-        self.refresh_button.setIconSize(QSize(18, 18))  # Larger icon
-        self.refresh_button.setToolTip("Refresh data")
-        self.refresh_button.setStyleSheet("""
-            QToolButton {
-                background-color: transparent;
-                border: none;
-                padding: 5px;
-            }
-            QToolButton:hover {
-                background-color: #414558;
-                border-radius: 5px;
-            }
-            QToolButton:pressed {
-                background-color: #2d74da;
-            }
-        """)
-        self.controls_layout.addWidget(self.refresh_button)
+        # Add refresh button (optional)
+        if show_refresh:
+            self.refresh_button = QToolButton()
+            self.refresh_button.setText("↻")
+            self.refresh_button.setToolTip("Refresh data")
+            self.refresh_button.setStyleSheet("""
+                QToolButton {
+                    background-color: transparent;
+                    border: none;
+                    padding: 5px;
+                }
+                QToolButton:hover { background-color: #414558; border-radius: 5px; }
+                QToolButton:pressed { background-color: #2d74da; }
+            """)
+            self.controls_layout.addWidget(self.refresh_button)
+        else:
+            self.refresh_button = None
         
         # Only add settings button if it's actually needed (simplify UI)
         if False:  # Changed to False to remove rarely used settings button
@@ -131,8 +129,7 @@ class DashboardCard(QFrame):
         # Add collapse button if card is collapsible
         if collapsible:
             self.collapse_button = QToolButton()
-            self.collapse_button.setIcon(QIcon("assets/icons/collapse.png" if not collapsed else "assets/icons/expand.png"))
-            self.collapse_button.setIconSize(QSize(18, 18))  # Larger icon
+            self.collapse_button.setText("▼" if not collapsed else "▲")
             self.collapse_button.setToolTip("Collapse section" if not collapsed else "Expand section")
             self.collapse_button.setStyleSheet("""
                 QToolButton {
@@ -151,7 +148,11 @@ class DashboardCard(QFrame):
             self.collapse_button.clicked.connect(self.toggle_collapse)
             self.controls_layout.addWidget(self.collapse_button)
         
-        # Add controls to header
+        # Hide controls_layout if empty
+        if self.controls_layout.count() == 0:
+            self.controls_layout.setParent(None)
+        
+        # Add controls to header (if not empty)
         header_layout.addLayout(self.controls_layout)
         
         # Add header to main layout
@@ -247,9 +248,9 @@ class DashboardCard(QFrame):
         # Update state
         self.is_collapsed = True
         
-        # Update button icon
+        # Update button text when collapsed
         if hasattr(self, 'collapse_button'):
-            self.collapse_button.setIcon(QIcon("assets/icons/expand.png"))
+            self.collapse_button.setText("▲")
             self.collapse_button.setToolTip("Expand card")
         
         # Emit signal
@@ -281,9 +282,9 @@ class DashboardCard(QFrame):
         # Update state
         self.is_collapsed = False
         
-        # Update button icon
+        # Update button text when expanded
         if hasattr(self, 'collapse_button'):
-            self.collapse_button.setIcon(QIcon("assets/icons/collapse.png"))
+            self.collapse_button.setText("▼")
             self.collapse_button.setToolTip("Collapse card")
         
         # Emit signal
@@ -332,7 +333,8 @@ class DashboardCard(QFrame):
         Args:
             slot: Function to call when refresh button is clicked
         """
-        self.refresh_button.clicked.connect(slot)
+        if self.refresh_button:
+            self.refresh_button.clicked.connect(slot)
     
     def connect_settings(self, slot):
         """

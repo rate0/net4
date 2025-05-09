@@ -6,13 +6,13 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QPushButton,
     QSplitter, QTabWidget, QTableWidget, QTableWidgetItem, QHeaderView,
     QMessageBox, QDialog, QGroupBox, QFormLayout, QSpinBox, QCheckBox,
-    QToolBar, QFrame, QSlider, QTimeEdit
+    QToolBar, QFrame, QSlider, QTimeEdit, QTreeWidget, QTreeWidgetItem, QTableView
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QDateTime, QTimer, QSize
 from PyQt6.QtGui import QIcon, QAction, QFont
 
 import matplotlib.pyplot as plt
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 import networkx as nx
 
 from ...models.session import Session
@@ -20,6 +20,7 @@ from ...models.network_entity import NetworkEntity
 from ..widgets.charts import TimelineChart, NetworkGraph
 from ..widgets.global_search import GlobalSearchWidget
 from ...utils.logger import Logger
+from ..models.generic_table_model import GenericTableModel
 
 
 class EventAnalysisDashboard(QWidget):
@@ -199,6 +200,23 @@ class EventAnalysisDashboard(QWidget):
         """)
         filter_layout.addWidget(self.entity_filter_combo)
         
+        # Correlate button
+        self.corr_button = QPushButton("↗ Correlate")
+        self.corr_button.setToolTip("Run correlation engine to group related events")
+        self.corr_button.setStyleSheet("""
+            QPushButton {
+                background-color: #2d74da;
+                color: #ffffff;
+                border-radius: 4px;
+                padding: 6px 14px;
+                font-weight: bold;
+            }
+            QPushButton:hover { background-color: #3a82f7; }
+            QPushButton:pressed { background-color: #2361b8; }
+        """)
+        self.corr_button.clicked.connect(self._run_correlation)
+        filter_layout.addWidget(self.corr_button)
+        
         controls_layout.addWidget(filter_group)
         
         # Add refresh button with improved styling
@@ -303,48 +321,15 @@ class EventAnalysisDashboard(QWidget):
         events_header.setStyleSheet("color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 5px;")
         events_layout.addWidget(events_header)
         
-        self.events_table = QTableWidget()
-        self.events_table.setColumnCount(5)
-        self.events_table.setHorizontalHeaderLabels([
-            "Time", "Source", "Destination", "Event Type", "Details"
-        ])
-        self.events_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
-        self.events_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
+        self.events_headers = ["Time", "Source", "Destination", "Event Type", "Details"]
+        self.events_model = GenericTableModel(self.events_headers, [])
+        self.events_table = QTableView()
+        self.events_table.setModel(self.events_model)
+        header = self.events_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
         self.events_table.setAlternatingRowColors(True)
-        self.events_table.setStyleSheet("""
-            QTableView {
-                background-color: #282838;
-                border-radius: 5px;
-                border: 1px solid #414558;
-                gridline-color: #414558;
-                color: #ffffff;
-            }
-            QHeaderView::section {
-                background-color: #3a3a4a;
-                color: #ffffff;
-                padding: 6px;
-                border: 1px solid #414558;
-                font-weight: bold;
-            }
-            QTableView::item {
-                padding: 6px;
-                border-bottom: 1px solid #414558;
-            }
-            QTableView::item:selected {
-                background-color: #2d74da;
-                color: #ffffff;
-            }
-            QTableView::item:hover:!selected {
-                background-color: #414558;
-            }
-            /* Custom styling for different event types */
-            QTableView::item[eventType="Anomaly"] {
-                background-color: rgba(217, 119, 6, 0.3);
-            }
-            QTableView::item[eventType="Rule Match"] {
-                background-color: rgba(185, 28, 28, 0.3);
-            }
-        """)
+        self.events_table.setSelectionBehavior(QTableView.SelectionBehavior.SelectRows)
         events_layout.addWidget(self.events_table)
         
         timeline_layout.addWidget(events_frame)
@@ -508,7 +493,7 @@ class EventAnalysisDashboard(QWidget):
         # Connect signals
         self.timeline_chart.point_selected.connect(self._on_timeline_point_selected)
         self.network_graph.node_selected.connect(self._on_graph_node_selected)
-        self.events_table.itemDoubleClicked.connect(self._on_event_double_clicked)
+        self.events_table.doubleClicked.connect(self._on_event_double_clicked)
         
         # Store the search frame reference for toggling visibility
         self.search_frame = search_frame
@@ -675,9 +660,6 @@ class EventAnalysisDashboard(QWidget):
         # Get time range
         start_time, end_time = self._get_selected_time_range()
         
-        # Clear table
-        self.events_table.setRowCount(0)
-        
         # Collect events
         events = []
         
@@ -724,30 +706,18 @@ class EventAnalysisDashboard(QWidget):
         # Sort by time
         events.sort(key=lambda e: e["time"])
         
-        # Add to table
-        for row, event in enumerate(events):
-            self.events_table.insertRow(row)
-            
-            # Time
-            time_str = event["time"].strftime("%Y-%m-%d %H:%M:%S")
-            self.events_table.setItem(row, 0, QTableWidgetItem(time_str))
-            
-            # Source
-            self.events_table.setItem(row, 1, QTableWidgetItem(event["source"]))
-            
-            # Destination
-            self.events_table.setItem(row, 2, QTableWidgetItem(event["destination"]))
-            
-            # Event type
-            type_item = QTableWidgetItem(event["type"])
-            if event["type"] == "Anomaly":
-                type_item.setBackground(Qt.GlobalColor.yellow)
-            elif event["type"] == "Rule Match":
-                type_item.setBackground(Qt.GlobalColor.red)
-            self.events_table.setItem(row, 3, type_item)
-            
-            # Details
-            self.events_table.setItem(row, 4, QTableWidgetItem(event["details"]))
+        # Convert to model-friendly rows
+        rows = []
+        for ev in events:
+            rows.append({
+                "Time": ev["time"].strftime("%Y-%m-%d %H:%M:%S"),
+                "Source": ev["source"],
+                "Destination": ev["destination"],
+                "Event Type": ev["type"],
+                "Details": ev["details"],
+            })
+
+        self.events_model.update(rows)
     
     def _get_selected_time_range(self) -> tuple:
         """
@@ -848,13 +818,14 @@ class EventAnalysisDashboard(QWidget):
             point_data: Data for selected point
         """
         # Update events table to highlight selected event
-        for row in range(self.events_table.rowCount()):
-            time_str = self.events_table.item(row, 0).text()
-            event_time = datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
+        for row in range(self.events_table.model().rowCount()):
+            index = self.events_table.model().index(row, 0)
+            value = self.events_table.model().data(index)
+            event_time = datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
             
             if abs((event_time - point_data["time"]).total_seconds()) < 1:
                 self.events_table.selectRow(row)
-                self.events_table.scrollToItem(self.events_table.item(row, 0))
+                self.events_table.scrollTo(index)
                 break
     
     def _on_graph_node_selected(self, node_data: Dict[str, Any]):
@@ -925,21 +896,22 @@ class EventAnalysisDashboard(QWidget):
             
             self.entity_details.setText(details)
     
-    def _on_event_double_clicked(self, item):
+    def _on_event_double_clicked(self, index):
         """
         Handle double click on event table item
         
         Args:
-            item: Clicked item
+            index: Clicked item index
         """
-        row = item.row()
+        row = index.row()
+        model = self.events_table.model()
         
         # Get event details
-        time_str = self.events_table.item(row, 0).text()
-        source = self.events_table.item(row, 1).text()
-        destination = self.events_table.item(row, 2).text()
-        event_type = self.events_table.item(row, 3).text()
-        details = self.events_table.item(row, 4).text()
+        time_str = model.data(model.index(row, 0))
+        source = model.data(model.index(row, 1))
+        destination = model.data(model.index(row, 2))
+        event_type = model.data(model.index(row, 3))
+        details = model.data(model.index(row, 4))
         
         # Show details dialog
         QMessageBox.information(
@@ -971,3 +943,47 @@ class EventAnalysisDashboard(QWidget):
             
             # Find and select the node in graph
             self.network_graph.select_node(item_data.get("value"))
+    
+    def _run_correlation(self):
+        """Execute correlation engine and display clusters in a dialog."""
+        if not self.session:
+            QMessageBox.warning(self, "No Session", "Load or capture data first.")
+            return
+
+        try:
+            from ...core.correlation.engine import CorrelationEngine  # lazy import
+            engine = CorrelationEngine()
+            clusters = engine.correlate(self.session)
+        except Exception as e:
+            self.logger.error(f"Correlation failed: {e}")
+            QMessageBox.critical(self, "Correlation Error", str(e))
+            return
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Correlation Results")
+        dlg.resize(600, 400)
+        vbox = QVBoxLayout(dlg)
+        if not clusters:
+            vbox.addWidget(QLabel("No related incidents found."))
+        else:
+            tree = QTreeWidget()
+            tree.setHeaderLabels(["IP", "Events"])
+            tree.header().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+            tree.header().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+
+            for cluster in clusters:
+                ip = cluster.get("ip")
+                events = cluster.get("events", [])
+                root = QTreeWidgetItem([ip, str(len(events))])
+                for ev in events:
+                    ts = ev.get("timestamp", "")
+                    desc = ev.get("description", "")
+                    child = QTreeWidgetItem([ts, desc])
+                    root.addChild(child)
+                tree.addTopLevelItem(root)
+            vbox.addWidget(tree)
+
+        btn = QPushButton("Close")
+        btn.clicked.connect(dlg.accept)
+        vbox.addWidget(btn, alignment=Qt.AlignmentFlag.AlignRight)
+        dlg.exec()

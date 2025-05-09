@@ -4,6 +4,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtGui import QIcon, QFont, QColor, QPalette, QPixmap
+import math, locale
 
 class MetricTrendIndicator(QWidget):
     """Widget that shows a metric trend with an up or down arrow"""
@@ -52,42 +53,20 @@ class MetricTrendIndicator(QWidget):
         """
         self.trend_value = trend_value
         
-        # Format trend text
-        abs_trend = abs(trend_value)
-        if abs_trend > 0:
-            trend_text = f"{abs_trend:.1f}%" if abs_trend < 10 else f"{int(abs_trend)}%"
-        else:
-            trend_text = "0%"
-        
-        self.text_label.setText(trend_text)
-        
-        # Set arrow icon and color based on trend
+        # Set arrow text and color (Unicode arrows instead of external icons)
         if trend_value > 0:
-            # Positive trend - up arrow
-            arrow_icon = "assets/icons/up_arrow.png"
-            color = "#15803D"  # Green
-            self.text_label.setStyleSheet(f"color: {color}; font-size: 10px;")
+            arrow_text = "▲"  # Up arrow
+            color = "#16a34a"  # Green
         elif trend_value < 0:
-            # Negative trend - down arrow
-            arrow_icon = "assets/icons/down_arrow.png"
-            color = "#B91C1C"  # Red
-            self.text_label.setStyleSheet(f"color: {color}; font-size: 10px;")
+            arrow_text = "▼"  # Down arrow
+            color = "#dc2626"  # Red
         else:
-            # Neutral trend - equals sign
-            arrow_icon = "assets/icons/neutral.png"
-            color = "#94A3B8"  # Gray
-            self.text_label.setStyleSheet(f"color: {color}; font-size: 10px;")
-        
-        # Create icon from pixmap with colorization
-        pixmap = QPixmap(arrow_icon)
-        if not pixmap.isNull():
-            self.arrow_label.setPixmap(pixmap.scaled(
-                12, 12, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
-            ))
-        else:
-            # Fallback if icon not found
-            self.arrow_label.setText("•")
-            self.arrow_label.setStyleSheet(f"color: {color}; font-size: 14px;")
+            arrow_text = "●"  # Bullet
+            color = "#94a3b8"  # Gray
+
+        self.arrow_label.setText(arrow_text)
+        self.arrow_label.setStyleSheet(f"color: {color}; font-size: 11px;")
+        self.text_label.setStyleSheet(f"color: {color}; font-size: 10px;")
 
 
 class MetricCard(QFrame):
@@ -180,7 +159,15 @@ class MetricCard(QFrame):
         self.layout.addLayout(self.header_layout)
         
         # Add value with larger font if large mode
-        self.value_widget = QLabel(str(value))
+        formatted_val = str(value)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            try:
+                locale.setlocale(locale.LC_NUMERIC, '')
+                formatted_val = locale.format_string('%d', value, grouping=True)
+            except Exception:
+                formatted_val = f"{value:,}"
+
+        self.value_widget = QLabel(formatted_val)
         self.value_widget.setObjectName("metricValue")
         value_font_size = 32 if large else 24
         self.value_widget.setStyleSheet(f"color: #ffffff; font-size: {value_font_size}px; font-weight: bold; margin-top: 4px;")
@@ -191,8 +178,8 @@ class MetricCard(QFrame):
         self.layout.addStretch()
         
         # Set reasonable minimum size but allow resizing
-        min_width = 160 if large else 140
-        min_height = 100 if large else 80
+        min_width = 200 if large else 170
+        min_height = 120 if large else 100
         self.setMinimumSize(min_width, min_height)
         
         # Set size policy for responsive resizing
@@ -206,8 +193,24 @@ class MetricCard(QFrame):
             value: New metric value
             trend (float, optional): New trend value
         """
+        # Format numeric values nicely; fallback to str for others
         self.metric_value = value
-        self.value_widget.setText(str(value))
+        if value is None:
+            value_str = "0"
+        elif isinstance(value, (int, float)):
+            if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
+                value_str = "0"
+            else:
+                # Use locale formatting for thousands separator
+                try:
+                    locale.setlocale(locale.LC_NUMERIC, '')
+                    value_str = locale.format_string('%d', value, grouping=True)
+                except Exception:
+                    value_str = f"{value:,}"
+        else:
+            value_str = str(value)
+
+        self.value_widget.setText(value_str)
         
         if trend is not None and hasattr(self, 'trend_indicator'):
             self.metric_trend = trend
@@ -288,7 +291,7 @@ class MetricCardGrid(QFrame):
         from PyQt6.QtWidgets import QGridLayout
         self.layout = QGridLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
-        self.layout.setSpacing(15)  # Space between cards
+        self.layout.setSpacing(20)  # Space between cards
     
     def add_metric(self, label, value=0, trend=None, icon=None, color=None, large=False):
         """
@@ -354,7 +357,8 @@ class MetricCardGrid(QFrame):
         while self.layout.count():
             item = self.layout.takeAt(0)
             if item.widget():
-                item.widget().deleteLater()
+                # Detach widget from layout but keep it alive to reuse
+                item.widget().setParent(None)
     
     def set_columns(self, columns):
         """
@@ -382,3 +386,15 @@ class MetricCardGrid(QFrame):
             row = card_index // self.num_columns
             col = card_index % self.num_columns
             self.layout.addWidget(card, row, col)
+
+    def resizeEvent(self, event):
+        """Re-layout grid adaptively when parent is resized"""
+        super().resizeEvent(event)
+        if self.cards:
+            # Предполагаем целевую ширину карточки ~230-240 px с учётом spacing
+            available_width = self.width()
+            target_card_width = 240 + self.layout.spacing()
+            # Гарантируем хотя бы одну колонку
+            new_cols = max(1, int(available_width / target_card_width))
+            if new_cols != self.num_columns:
+                self.set_columns(new_cols)
