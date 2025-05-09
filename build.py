@@ -16,7 +16,6 @@ ICON_LINUX = PROJECT_ROOT / "assets" / "icons" / "app_icon.png"
 # Resources to include in bundle (src;target) pairs
 DATA_SPEC = [
     ("assets", "assets"),  # icons, qss, etc.
-    ("src/resources", "resources"),
 ]
 
 # Hidden imports that PyInstaller often misses
