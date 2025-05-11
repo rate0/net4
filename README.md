@@ -8,30 +8,54 @@ A desktop application for network forensic analysis with a focus on packet captu
 - Support for PCAP files and network capture formats
 - Scapy-based packet processing
 - Live network capture capability
-- HTTP traffic analysis 
+- HTTP/HTTPS traffic analysis with TLS support
 - Automatic packet parsing and indexing
+- Connection tracking and analysis
 
 ### 2. Data Visualization & Exploration
 - Overview dashboard with session metrics and traffic patterns
 - Network flow analysis with connection filtering
+- HTTP/HTTPS traffic inspection with request/response details
 - Timeline view for chronological event tracking
-- Graph-based visualization of network relationship
+- Graph-based visualization of network relationships
+- Event analysis dashboard for detailed packet inspection
+- Interactive charts and graphs using PyQtGraph
 
 ### 3. AI-Powered Analysis
 - OpenAI API integration for network traffic analysis
 - Interactive chat interface for asking questions about network data
 - Automatic session analysis with key findings
+- Support for multiple AI models with fallback options:
+  - gpt-4o
+  - o1 
+  - gpt-4.1-mini
+  - gpt-4o-mini
+  - o3-mini
+  - gpt-4.1-nano
 - Structured data extraction from AI responses
+- Chat history tracking and management
 
 ### 4. Threat Intelligence Integration
 - VirusTotal API integration for IP and domain lookups
+- Risk classification and scoring
+- Threat information display
+- Correlation analysis between network entities
+- Domain WHOIS information lookup
 
 ### 5. Rules Engine
 - YAML-based rule format for custom detection rules
+- Support for importing Suricata rules
+- Pre-configured rule sets for malware and APT detection
+- Rule evaluation on data import
 - Rule management interface
+- Automatic rule reloading
 
 ### 6. Reporting
-- Report generation: PDF, CSV, Json
+- PDF report generation using ReportLab
+- Customizable report templates
+- Company branding support
+- Session metadata inclusion
+- Multiple export formats
 
 ## Installation
 
