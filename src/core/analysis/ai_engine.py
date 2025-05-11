@@ -60,13 +60,13 @@ class AIEngine:
         # Define available models in order of preference
         self.available_models = [
             "gpt-4o",        # Best balance of capability and speed
-            "o1",            # Advanced Claude model 
+            "o1",            # Advanced OpenAI model
             "gpt-4.1-mini",  # Optimized GPT-4.1 model
             "gpt-4o-mini",   # Mini version of GPT-4o
-            "o3-mini",       # Mini version of Claude's o3
+            "o3-mini",       # Mini version of o3
             "gpt-4.1-nano",  # Smallest GPT-4.1 variant
-            "o1-2024-12-17", # Dated version of Claude o1
-            "o3-mini-2025-01-31", # Dated version of Claude o3-mini
+            "o1-2024-12-17", # Dated version of o1
+            "o3-mini-2025-01-31", # Dated version of o3-mini
             "gpt-4o-mini-2024-07-18" # Dated version of GPT-4o mini
         ]
     
