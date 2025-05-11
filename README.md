@@ -26,8 +26,8 @@ A desktop application for network forensic analysis with a focus on packet captu
 - Interactive chat interface for asking questions about network data
 - Automatic session analysis with key findings
 - Support for multiple AI models with fallback options:
-  - gpt-4o (primary)
-  - o1 (OpenAI)
+  - gpt-4o 
+  - o1 
   - gpt-4.1-mini
   - gpt-4o-mini
   - o3-mini
